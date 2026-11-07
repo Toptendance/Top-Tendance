@@ -50,6 +50,47 @@ export const metadata: Metadata = {
   },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "ClothingStore",
+  "name": "Top Tendance",
+  "image": "https://www.toptendance.net/images/top-tendance-store.jpg",
+  "@id": "https://www.toptendance.net/#store",
+  "url": "https://www.toptendance.net/",
+  "telephone": "+216 52 293 651",
+  "priceRange": "$$",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Rue El Hidaya",
+    "addressLocality": "Ariana",
+    "addressCountry": "TN"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 36.83779812788549,
+    "longitude": 10.098366103788287
+  },
+  "openingHoursSpecification": {
+    "@type": "OpeningHoursSpecification",
+    "dayOfWeek": [
+      "Monday",
+      "Tuesday",
+      "Thursday",
+      "Wednesday",
+      "Friday",
+      "Saturday",
+      "Sunday"
+    ],
+    "opens": "10:00",
+    "closes": "21:00"
+  },
+  "sameAs": [
+    "https://www.facebook.com/clothstoretoptendance",
+    "https://www.instagram.com/toptendanceofficial/",
+    "https://www.pinterest.com/rabaatoptendance/"
+  ]
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -57,6 +98,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={`${inter.variable} ${playfair.variable} ${outfit.variable}`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="min-h-screen flex flex-col font-sans bg-white text-charcoal antialiased">
         <ToastProvider>
           <CartProvider>
