@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import BarcodeTagModal from '@/components/pos/BarcodeTagModal';
 import DeliveryReceivingModal from '@/components/pos/DeliveryReceivingModal';
+import MobileScannerModal from '@/components/pos/MobileScannerModal';
 import { useToast } from '@/context/ToastContext';
 import {
   Boxes,
@@ -17,7 +18,8 @@ import {
   TrendingUp,
   RefreshCw,
   Edit2,
-  Trash2
+  Trash2,
+  Camera
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,6 +57,7 @@ export default function InventoryDashboardPage() {
   const [tagModalVariant, setTagModalVariant] = useState<any>(null);
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -360,15 +363,26 @@ export default function InventoryDashboardPage() {
 
         {/* Filters and Search Bar */}
         <div className="bg-white p-3.5 sm:p-4 rounded-2xl border shadow-xs flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-stretch sm:items-center justify-between">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-3 text-gray-400" size={16} />
-            <input
-              type="text"
-              placeholder="Rechercher nom, SKU ou code-barres..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs sm:text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-black min-h-[40px]"
-            />
+          <div className="relative flex-1 w-full flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="Rechercher nom, SKU ou code-barres..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs sm:text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-black min-h-[40px]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCameraScannerOpen(true)}
+              title="Scanner un code avec la caméra"
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 min-h-[40px] transition shrink-0"
+            >
+              <Camera size={16} />
+              <span className="hidden sm:inline">Caméra</span>
+            </button>
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto items-center">
@@ -591,6 +605,17 @@ export default function InventoryDashboardPage() {
       <BarcodeTagModal
         variant={tagModalVariant}
         onClose={() => setTagModalVariant(null)}
+      />
+
+      {/* Mobile Camera Barcode Scanner Modal */}
+      <MobileScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScan={(code) => {
+          setSearchTerm(code);
+          setIsCameraScannerOpen(false);
+        }}
+        title="Recherche Inventaire par Caméra"
       />
 
       {/* Delivery Receiving Modal */}

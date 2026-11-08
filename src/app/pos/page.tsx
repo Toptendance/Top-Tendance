@@ -6,6 +6,7 @@ import { playBeep } from '@/utils/posAudio';
 import PaymentDrawer from '@/components/pos/PaymentDrawer';
 import ProductSearchDrawer from '@/components/pos/ProductSearchDrawer';
 import ReceiptModal from '@/components/pos/ReceiptModal';
+import MobileScannerModal from '@/components/pos/MobileScannerModal';
 import {
   Barcode,
   Search,
@@ -16,7 +17,8 @@ import {
   LogOut,
   User,
   ShoppingBag,
-  AlertCircle
+  AlertCircle,
+  Camera
 } from 'lucide-react';
 
 interface CartItem {
@@ -49,6 +51,7 @@ export default function PosPage() {
   // Drawers and Modals
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [completedReceipt, setCompletedReceipt] = useState<any>(null);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
@@ -200,20 +203,11 @@ export default function PosPage() {
     });
   }, []);
 
-  // Handle Barcode Scanner Submit (with Enter debouncing)
-  const handleBarcodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const barcode = barcodeInput.trim();
+  // Handle Barcode Lookup Logic
+  const processBarcodeScan = async (rawCode: string) => {
+    const barcode = rawCode.trim();
     if (!barcode) return;
 
-    const now = Date.now();
-    // Debounce fast scans within 150ms
-    if (now - lastScanTimeRef.current < 150) {
-      return;
-    }
-    lastScanTimeRef.current = now;
-
-    setBarcodeInput('');
     setCartError(null);
 
     try {
@@ -292,6 +286,23 @@ export default function PosPage() {
       setCartError(err.message || 'Erreur lors du scan');
       playBeep('error');
     }
+  };
+
+  // Handle Barcode Scanner Submit (with Enter debouncing)
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const barcode = barcodeInput.trim();
+    if (!barcode) return;
+
+    const now = Date.now();
+    // Debounce fast scans within 150ms
+    if (now - lastScanTimeRef.current < 150) {
+      return;
+    }
+    lastScanTimeRef.current = now;
+
+    setBarcodeInput('');
+    await processBarcodeScan(barcode);
   };
 
   const updateQuantity = (variantId: string, delta: number) => {
@@ -471,13 +482,23 @@ export default function PosPage() {
               <label className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
                 <Barcode size={16} /> Scanner Code-barres <span className="hidden sm:inline">(F2)</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setIsSearchOpen(true)}
-                className="text-xs font-semibold text-gray-700 hover:text-black flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0"
-              >
-                <Search size={15} /> Recherche Manuelle
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0 flex items-center gap-1.5"
+                >
+                  <Camera size={15} />
+                  <span>Caméra Mobile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen(true)}
+                  className="text-xs font-semibold text-gray-700 hover:text-black flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0"
+                >
+                  <Search size={15} /> Recherche Manuelle
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleBarcodeSubmit} className="relative">
@@ -632,6 +653,16 @@ export default function PosPage() {
       </div>
 
       {/* Drawers and Modals */}
+      <MobileScannerModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onScan={(code) => {
+          processBarcodeScan(code);
+          setIsCameraOpen(false);
+        }}
+        title="Scanner Caméra POS"
+      />
+
       <ProductSearchDrawer
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
