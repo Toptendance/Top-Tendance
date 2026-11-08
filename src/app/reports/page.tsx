@@ -80,42 +80,43 @@ export default function ReportsAnalyticsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans select-none">
       {/* Top Header */}
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-4">
+      <header className="bg-white border-b px-4 sm:px-6 py-3.5 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between sticky top-0 z-30 shadow-xs gap-3">
+        <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-4 w-full sm:w-auto">
           <Link
             href="/inventory"
-            className="text-gray-500 hover:text-black flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 border rounded-lg hover:bg-gray-100 transition"
+            className="text-gray-500 hover:text-black flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 border rounded-lg hover:bg-gray-100 transition shrink-0"
           >
-            <ArrowLeft size={14} /> Retour à l'Inventaire
+            <ArrowLeft size={14} /> <span className="hidden xs:inline">Retour à </span>l'Inventaire
           </Link>
-          <div className="h-4 w-px bg-gray-300" />
-          <h1 className="font-extrabold text-xl text-gray-900 tracking-tight">
-            Rapports & Statistiques Financières
+          <div className="h-4 w-px bg-gray-300 hidden sm:block" />
+          <h1 className="font-extrabold text-base sm:text-xl text-gray-900 tracking-tight truncate">
+            Rapports & Statistiques
           </h1>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+          {/* Segmented Period Control - Full width on mobile */}
+          <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold flex-1 sm:flex-initial justify-between sm:justify-start">
             <button
               onClick={() => setSelectedPeriod('7')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                selectedPeriod === '7' ? 'bg-white text-black shadow-sm' : 'text-gray-500'
+              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                selectedPeriod === '7' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
               7 jours
             </button>
             <button
               onClick={() => setSelectedPeriod('30')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                selectedPeriod === '30' ? 'bg-white text-black shadow-sm' : 'text-gray-500'
+              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                selectedPeriod === '30' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
               30 jours
             </button>
             <button
               onClick={() => setSelectedPeriod('90')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                selectedPeriod === '90' ? 'bg-white text-black shadow-sm' : 'text-gray-500'
+              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                selectedPeriod === '90' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
               3 mois
@@ -124,7 +125,7 @@ export default function ReportsAnalyticsPage() {
 
           <button
             onClick={fetchAnalytics}
-            className="p-2 border rounded-xl hover:bg-gray-100 text-gray-600 transition"
+            className="p-2 sm:p-2.5 border rounded-xl hover:bg-gray-100 text-gray-600 transition shrink-0 min-h-[40px] flex items-center justify-center"
             title="Actualiser"
           >
             <RefreshCw size={16} />
@@ -133,80 +134,80 @@ export default function ReportsAnalyticsPage() {
       </header>
 
       {/* Main Body */}
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 p-3.5 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
         {/* KPI Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Revenue */}
-          <div className="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
-              <span className="text-xs font-bold uppercase text-gray-500">Chiffre d'Affaires</span>
-              <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Chiffre d'Affaires</span>
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 shrink-0">
                 <DollarSign size={18} />
               </div>
             </div>
-            <div className="mt-4">
-              <p className="text-2xl font-black font-mono text-gray-950">
+            <div className="mt-3 sm:mt-4">
+              <p className="text-xl sm:text-2xl font-black font-mono text-gray-950">
                 {Number(salesAnalytics?.gross_revenue || 0).toFixed(3)}{' '}
                 <span className="text-xs font-normal">DT</span>
               </p>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
                 {salesAnalytics?.sales_count || 0} ventes encaissées
               </p>
             </div>
           </div>
 
           {/* Net Profit */}
-          <div className="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
-              <span className="text-xs font-bold uppercase text-gray-500">Bénéfice Net Réalisé</span>
-              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Bénéfice Net Réalisé</span>
+              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
                 <TrendingUp size={18} />
               </div>
             </div>
-            <div className="mt-4">
-              <p className="text-2xl font-black font-mono text-emerald-600">
+            <div className="mt-3 sm:mt-4">
+              <p className="text-xl sm:text-2xl font-black font-mono text-emerald-600">
                 {Number(salesAnalytics?.net_profit || 0).toFixed(3)}{' '}
                 <span className="text-xs font-normal">DT</span>
               </p>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
                 Coût marchandises: {Number(salesAnalytics?.total_cost || 0).toFixed(3)} DT
               </p>
             </div>
           </div>
 
           {/* Stock Valuation at Cost */}
-          <div className="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
-              <span className="text-xs font-bold uppercase text-gray-500">Valeur Stock (Coût Achat)</span>
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Valeur Stock (Achat)</span>
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
                 <Package size={18} />
               </div>
             </div>
-            <div className="mt-4">
-              <p className="text-2xl font-black font-mono text-gray-950">
+            <div className="mt-3 sm:mt-4">
+              <p className="text-xl sm:text-2xl font-black font-mono text-gray-950">
                 {Number(stockValuation?.total_stock_valuation_cost || 0).toFixed(3)}{' '}
                 <span className="text-xs font-normal">DT</span>
               </p>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
                 {stockValuation?.total_stock_units || 0} pièces en réserve
               </p>
             </div>
           </div>
 
           {/* Stock Valuation at Retail */}
-          <div className="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
-              <span className="text-xs font-bold uppercase text-gray-500">Valeur Vente Estimée</span>
-              <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
+              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Valeur Vente Estimée</span>
+              <div className="p-2 rounded-xl bg-purple-50 text-purple-600 shrink-0">
                 <Layers size={18} />
               </div>
             </div>
-            <div className="mt-4">
-              <p className="text-2xl font-black font-mono text-purple-600">
+            <div className="mt-3 sm:mt-4">
+              <p className="text-xl sm:text-2xl font-black font-mono text-purple-600">
                 {Number(stockValuation?.total_stock_valuation_retail || 0).toFixed(3)}{' '}
                 <span className="text-xs font-normal">DT</span>
               </p>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
                 Marge moyenne estimée: {stockValuation?.estimated_margin_percent || 0}%
               </p>
             </div>
@@ -214,14 +215,14 @@ export default function ReportsAnalyticsPage() {
         </div>
 
         {/* Middle Row: Payment Methods & Best Sellers */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
           {/* Payment Method Breakdown (5 cols) */}
-          <div className="lg:col-span-5 bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
+          <div className="lg:col-span-5 bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <h3 className="font-bold text-sm text-gray-900 pb-3 border-b flex items-center gap-2">
               <CreditCard size={16} /> Répartition des Règlements
             </h3>
 
-            <div className="space-y-3 my-4">
+            <div className="space-y-2.5 my-3 sm:my-4">
               {salesAnalytics?.payment_breakdown?.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-6">Aucune transaction</p>
               ) : (
@@ -237,22 +238,22 @@ export default function ReportsAnalyticsPage() {
                   return (
                     <div
                       key={pb.method}
-                      className="p-3 border rounded-xl flex items-center justify-between bg-gray-50/50"
+                      className="p-3 border rounded-xl flex items-center justify-between bg-gray-50/50 gap-2"
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {icon}
-                        <span className="text-xs font-bold uppercase text-gray-700">
+                        <span className="text-xs font-bold uppercase text-gray-700 truncate">
                           {pb.method === 'cash'
                             ? 'Espèces'
                             : pb.method === 'card'
-                            ? 'Carte Bancaire'
+                            ? 'Carte'
                             : 'Mixte'}
                         </span>
-                        <span className="text-[11px] text-gray-400 font-mono">
-                          ({pb.count} reçus)
+                        <span className="text-[11px] text-gray-400 font-mono shrink-0">
+                          ({pb.count})
                         </span>
                       </div>
-                      <span className="font-mono font-bold text-sm text-gray-900">
+                      <span className="font-mono font-bold text-sm text-gray-900 shrink-0">
                         {Number(pb.total).toFixed(3)} DT
                       </span>
                     </div>
@@ -267,12 +268,12 @@ export default function ReportsAnalyticsPage() {
           </div>
 
           {/* Best-Sellers (7 cols) */}
-          <div className="lg:col-span-7 bg-white p-5 rounded-2xl border shadow-sm">
+          <div className="lg:col-span-7 bg-white p-4 sm:p-5 rounded-2xl border shadow-xs">
             <h3 className="font-bold text-sm text-gray-900 pb-3 border-b flex items-center gap-2">
               <Award size={16} /> Top Ventes & Articles Phares
             </h3>
 
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-3 sm:mt-4 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="text-gray-400 uppercase font-semibold text-[10px] border-b">
                   <tr>
@@ -291,7 +292,7 @@ export default function ReportsAnalyticsPage() {
                   ) : (
                     salesAnalytics?.best_sellers?.map((bs: any) => (
                       <tr key={bs.variant_id} className="hover:bg-gray-50/60">
-                        <td className="py-2.5 font-mono font-semibold text-gray-900">
+                        <td className="py-2.5 font-mono font-semibold text-gray-900 truncate max-w-[140px] sm:max-w-none">
                           {bs.sku}
                         </td>
                         <td className="py-2.5 text-center font-bold text-gray-900">
@@ -310,12 +311,68 @@ export default function ReportsAnalyticsPage() {
         </div>
 
         {/* Bottom Row: Stock Movement Audit Log */}
-        <div className="bg-white rounded-2xl border shadow-sm p-5">
+        <div className="bg-white rounded-2xl border shadow-xs p-4 sm:p-5">
           <h3 className="font-bold text-sm text-gray-900 pb-3 border-b flex items-center gap-2">
             <History size={16} /> Journal d'Audit des Mouvements de Stock
           </h3>
 
-          <div className="mt-4 overflow-x-auto">
+          {/* Mobile Card Feed for Stock Movements (< 768px) */}
+          <div className="block md:hidden divide-y divide-gray-100 mt-3">
+            {stockMovements.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-xs">
+                Aucun mouvement de stock enregistré
+              </div>
+            ) : (
+              stockMovements.map((m) => {
+                const isPositive = m.quantity_change > 0;
+                const typeLabel =
+                  m.movement_type === 'sale'
+                    ? 'Vente'
+                    : m.movement_type === 'restock'
+                    ? 'Réception'
+                    : m.movement_type === 'return'
+                    ? 'Retour'
+                    : 'Ajustement';
+
+                return (
+                  <div key={m.id} className="py-3 space-y-1.5">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-gray-900 text-xs">
+                          {m.variant?.product?.name || m.variant?.sku}
+                        </p>
+                        <p className="font-mono text-gray-400 text-[10px]">{m.variant?.sku}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span
+                          className={`font-mono font-black text-sm ${
+                            isPositive ? 'text-emerald-700' : 'text-red-600'
+                          }`}
+                        >
+                          {isPositive ? `+${m.quantity_change}` : m.quantity_change}
+                        </span>
+                        <div className="mt-0.5">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase bg-gray-100 text-gray-700">
+                            {typeLabel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
+                      <span className="truncate max-w-[180px]">{m.reason || 'Opération standard'}</span>
+                      <span className="font-mono text-[10px] text-gray-400">
+                        {new Date(m.created_at).toLocaleDateString('fr-TN')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Table View (>= 768px) */}
+          <div className="hidden md:block mt-4 overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 text-gray-500 uppercase border-b font-semibold text-[10px]">
                 <tr>

@@ -33,13 +33,13 @@ export default function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 text-gray-900 flex flex-col max-h-[90vh]">
-        <div className="flex justify-between items-center mb-4 pb-2 border-b">
-          <h3 className="font-bold text-lg">Ticket de Caisse</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-4 sm:p-6 text-gray-900 flex flex-col max-h-[92vh]">
+        <div className="flex justify-between items-center mb-3 sm:mb-4 pb-2 border-b">
+          <h3 className="font-bold text-base sm:text-lg">Ticket de Caisse</h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition"
           >
             <X size={20} />
           </button>

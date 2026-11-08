@@ -76,41 +76,41 @@ export default function PaymentDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col p-6 animate-in slide-in-from-right duration-200">
-        <div className="flex justify-between items-center pb-4 border-b">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end bg-black/60 backdrop-blur-xs p-0 sm:p-0">
+      <div className="bg-white w-full sm:max-w-lg h-[92vh] sm:h-full shadow-2xl flex flex-col p-4 sm:p-6 rounded-t-2xl sm:rounded-none animate-in slide-in-from-bottom sm:slide-in-from-right duration-200 overflow-y-auto">
+        <div className="flex justify-between items-center pb-3 sm:pb-4 border-b">
           <div>
-            <h3 className="font-bold text-xl text-gray-900">Encaissement (F9)</h3>
+            <h3 className="font-bold text-lg sm:text-xl text-gray-900">Encaissement (F9)</h3>
             <p className="text-xs text-gray-500">Réglez la vente et imprimez le ticket</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600"
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
           >
-            <X size={22} />
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between mt-6">
-          <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between mt-4 sm:mt-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Total Recap Card */}
-            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
-              <div className="flex justify-between text-sm text-gray-600">
+            <div className="bg-gray-50 p-3.5 sm:p-4 rounded-xl border border-gray-200 space-y-2">
+              <div className="flex justify-between text-xs sm:text-sm text-gray-600">
                 <span>Sous-total:</span>
-                <span className="font-mono">{totalAmount.toFixed(3)} DT</span>
+                <span className="font-mono font-medium">{totalAmount.toFixed(3)} DT</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Remise (DT):</span>
+              <div className="flex justify-between items-center text-xs sm:text-sm">
+                <span className="text-gray-600 font-medium">Remise (DT):</span>
                 <input
                   type="number"
                   step="0.001"
                   min="0"
                   value={discountInput}
                   onChange={(e) => setDiscountInput(e.target.value)}
-                  className="w-28 text-right font-mono p-1 border rounded bg-white text-sm focus:ring-1 focus:ring-black"
+                  className="w-28 text-right font-mono p-1.5 border rounded-lg bg-white text-sm focus:ring-1 focus:ring-black"
                 />
               </div>
-              <div className="flex justify-between text-xl font-extrabold text-gray-950 pt-2 border-t">
+              <div className="flex justify-between text-lg sm:text-xl font-extrabold text-gray-950 pt-2 border-t">
                 <span>Net à Payer:</span>
                 <span className="font-mono text-emerald-600">{finalAmount.toFixed(3)} DT</span>
               </div>
@@ -121,51 +121,51 @@ export default function PaymentDrawer({
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                 Mode de Paiement
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`p-3 border rounded-xl flex flex-col items-center gap-2 transition ${
+                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
                     paymentMethod === 'cash'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <Banknote size={20} />
-                  <span className="text-xs font-semibold">Espèces</span>
+                  <Banknote size={18} />
+                  <span className="text-[11px] sm:text-xs font-semibold">Espèces</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('card')}
-                  className={`p-3 border rounded-xl flex flex-col items-center gap-2 transition ${
+                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
                     paymentMethod === 'card'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <CreditCard size={20} />
-                  <span className="text-xs font-semibold">Carte Bancaire</span>
+                  <CreditCard size={18} />
+                  <span className="text-[11px] sm:text-xs font-semibold">Carte</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('split')}
-                  className={`p-3 border rounded-xl flex flex-col items-center gap-2 transition ${
+                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
                     paymentMethod === 'split'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <Split size={20} />
-                  <span className="text-xs font-semibold">Mixte</span>
+                  <Split size={18} />
+                  <span className="text-[11px] sm:text-xs font-semibold">Mixte</span>
                 </button>
               </div>
             </div>
 
             {/* Cash Tendered Calculation */}
             {paymentMethod === 'cash' && (
-              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-3">
+              <div className="bg-emerald-50 border border-emerald-200 p-3.5 sm:p-4 rounded-xl space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-emerald-950 mb-1">
                     Espèces Remises par le Client (DT):
@@ -177,13 +177,34 @@ export default function PaymentDrawer({
                     value={cashTenderedInput}
                     onChange={(e) => setCashTenderedInput(e.target.value)}
                     autoFocus
-                    className="w-full text-2xl font-mono font-bold text-right p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    className="w-full text-xl sm:text-2xl font-mono font-bold text-right p-2.5 sm:p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
                   />
                 </div>
 
+                {/* Quick Cash Buttons */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {[10, 20, 50, 100].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setCashTenderedInput(val.toFixed(3))}
+                      className="px-2.5 py-1 text-xs font-mono font-semibold bg-white border border-emerald-300 rounded hover:bg-emerald-100 transition text-emerald-900"
+                    >
+                      {val} DT
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCashTenderedInput(finalAmount.toFixed(3))}
+                    className="px-2.5 py-1 text-xs font-mono font-semibold bg-emerald-600 text-white rounded hover:bg-emerald-700 transition"
+                  >
+                    Montant Exact
+                  </button>
+                </div>
+
                 <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
-                  <span className="font-semibold text-emerald-900 text-sm">Monnaie à rendre:</span>
-                  <span className="font-mono text-2xl font-extrabold text-emerald-800">
+                  <span className="font-semibold text-emerald-900 text-xs sm:text-sm">Monnaie à rendre:</span>
+                  <span className="font-mono text-xl sm:text-2xl font-extrabold text-emerald-800">
                     {changeDue.toFixed(3)} DT
                   </span>
                 </div>
@@ -197,25 +218,25 @@ export default function PaymentDrawer({
             )}
           </div>
 
-          <div className="pt-6 border-t flex gap-3">
+          <div className="pt-4 sm:pt-6 border-t flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 mt-4">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-5 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 font-medium text-sm transition"
+              className="w-full sm:w-auto px-5 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 font-medium text-sm transition text-center"
             >
               Annuler (Esc)
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 bg-black text-white py-3 rounded-xl hover:bg-gray-800 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg"
+              className="w-full sm:flex-1 bg-black text-white py-3.5 sm:py-3 rounded-xl hover:bg-gray-800 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg min-h-[46px]"
             >
               {isSubmitting ? (
                 <span>Validation en cours...</span>
               ) : (
                 <>
-                  <CheckCircle2 size={18} /> Valider la Vente ({finalAmount.toFixed(3)} DT)
+                  <CheckCircle2 size={18} /> Valider ({finalAmount.toFixed(3)} DT)
                 </>
               )}
             </button>

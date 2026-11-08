@@ -5,200 +5,123 @@
 
 ---
 
-## Stack
+## 1. System Architecture & Tech Stack
 
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 14 (App Router, `src/` layout) |
-| Language | TypeScript (strict) |
-| Styling | Tailwind CSS v3 (custom config in `tailwind.config.ts`) |
-| Icons | `lucide-react` |
-| Utilities | `clsx`, `tailwind-merge` |
-| State | React Context API + `localStorage` (no external lib) |
-| Fonts | `Playfair Display` (women headings), `Outfit` (kids headings), `Inter` (UI + prices) |
-| Currency | Tunisia / TND — formatted via `src/utils/currency.ts` → `formatPrice(189)` → `"189.000 TND"` |
-| Images | `next/image`, remote patterns: `images.unsplash.com` |
-| Data | Static mock JSON at `src/data/products.json` (16 products: 8 women, 8 kids) |
-
----
-
-## Design System
-
-### Colors (tailwind.config.ts)
-- `charcoal` (#1A1A1A) — primary text/bg (women)
-- `cream` (#F9F6F0) — page background
-- `linen` (#EFECE6) — subtle surface
-- `kids-peach` (#E78B72), `kids-peach-light` (#FDF1ED)
-- `kids-sage` (#8EAA90), `kids-sage-light` (#F1F6F2)
-- `kids-sky` (#8FBAD6), `kids-sky-light` (#EEF5FA)
-- `sale` (#B84A39), `sale-light` (#FBEBE9)
-- `border` (#E5E5E5)
-
-### Design Language
-- **Women**: Calm, editorial, generous whitespace, neutral tones, `rounded-women` (2px), serif headings, no rounded corners on buttons
-- **Kids**: Warm pastels, `rounded-kids` (20px), `font-kids`, friendly UI, age-first navigation
-
-### Typography
-- `font-serif` → Playfair Display (women editorial)
-- `font-kids` → Outfit (kids UI)
-- `font-sans` → Inter (default body, prices)
+| Layer | Choice | Notes |
+|---|---|---|
+| **Framework** | Next.js 14 (App Router, `src/` layout) | TypeScript (strict), SSG + Client Hydration |
+| **Styling** | Tailwind CSS v3 (custom config) | Fonts: `Playfair Display`, `Outfit`, `Inter` |
+| **Database & Auth** | Supabase (PostgreSQL 15 + GoTrue) | Project: `uqwvbbuxriiduedhdqwl` (region: `eu-west-2`) |
+| **Client / SSR** | `@supabase/ssr` (`createBrowserClient`) | Cookie-based session sharing between client & middleware |
+| **Middleware** | `src/middleware.ts` (`@supabase/ssr`) | Protects `/account`, `/pos`, `/inventory`, `/reports` |
+| **Icons & Audio** | `lucide-react`, Web Audio API (`posAudio.ts`) | Barcode scanner sounds (success / error beeps) |
+| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | Thermal print: 50mm × 30mm sticker tags |
+| **Currency** | Tunisian Dinar (`TND` / `DT`) | All financial DB columns: `numeric(12,3)` |
+| **Production Domain** | `https://toptendance.tn` | Supabase Site URL & Redirect URLs configured |
 
 ---
 
-## File Structure
+## 2. Roles, Authentication & Route Protection
+
+The system supports **3 distinct user roles** managed via the `profiles` table in Supabase:
+
+| Role | Permissions & Access | Default Land Route | Test Credentials |
+|---|---|---|---|
+| **Manager** (`manager`) | Full POS, Inventory Management, Barcode Printing, Soft-delete Products, Analytics & Reports | `/inventory` | `manager@toptendance.tn` / `TopTendance2026!Manager` |
+| **Cashier** (`cashier`) | Point of Sale (`/pos`), Barcode scanning, Receipt generation, complete sale RPC | `/pos` | `cashier@toptendance.tn` / `TopTendance2026!Cashier` |
+| **Customer** (`customer` / null) | E-commerce boutique, Orders history, Address carnet, Wishlist, Profile | `/account` | Any registered client account |
+
+### Key Route Protection (`src/middleware.ts`):
+- `/account`: Requires authenticated user.
+- `/pos`: Requires authenticated user with role `cashier` OR `manager`.
+- `/inventory` & `/reports`: Strictly requires `manager`.
+- Authentication uses **HTTP Cookies** via `@supabase/ssr` (syncs between login client & server middleware).
+
+---
+
+## 3. Database Schema & Security Architecture
+
+### Tables in Supabase (`public` schema)
+1. `profiles`: `id (uuid PK)`, `role (text: 'manager'|'cashier'|'customer')`, `full_name`, `phone`
+2. `categories`: `id (uuid PK)`, `name (text)`, `description (text)`
+3. `products`: `id (uuid PK)`, `name`, `brand`, `category_id (FK)`, `is_active (bool default true)`
+4. `variants`: `id (uuid PK)`, `product_id (FK)`, `sku (unique)`, `barcode (unique)`, `size`, `color`, `selling_price (numeric 12,3)`, `stock_quantity (int)`, `low_stock_threshold (int)`, `is_active (bool default true)`
+5. `variant_costs`: `variant_id (FK PK)`, `cost_price (numeric 12,3)` *(Isolated from Cashiers via RLS)*
+6. `sales`: `id (uuid PK)`, `cashier_id (FK)`, `customer_id (FK null)`, `customer_phone`, `total_amount`, `payment_method ('cash'|'card'|'split')`, `discount_amount`, `created_at`
+7. `sale_items`: `id (uuid PK)`, `sale_id (FK)`, `variant_id (FK)`, `quantity`, `unit_price`, `subtotal`
+8. `stock_movements`: `id (uuid PK)`, `variant_id (FK)`, `quantity_change`, `movement_type ('sale'|'receiving'|'return'|'adjustment')`, `reference_id`, `created_by`
+9. `customer_addresses`: `id (uuid PK)`, `user_id (FK)`, `label`, `recipient_name`, `phone`, `city`, `governorate`, `postal_code`, `is_default`
+10. `customer_wishlists`: `id (uuid PK)`, `user_id (FK)`, `variant_id (FK)`, `created_at`
+
+### RPC Functions (`SECURITY DEFINER`)
+- `complete_sale(p_items jsonb, p_payment_method text, p_discount numeric)`: Atomically validates stock, inserts sale record + sale items, decrements stock quantities, logs stock movements.
+- `receive_stock(p_items jsonb, p_supplier_name text, p_invoice_number text)`: Increases variant stock and logs receiving movements.
+- `process_return(p_sale_item_id uuid, p_quantity int, p_refund_method text)`: Restores inventory and records refund.
+- `get_sales_analytics(p_start_date date, p_end_date date)`: Generates manager revenue and profit reports.
+- `get_stock_valuation()`: Calculates total inventory value at cost price vs selling price.
+
+---
+
+## 4. Key Application Modules & File Structure
 
 ```
 src/
 ├── app/
-│   ├── layout.tsx          ← Root layout: fonts, providers, Header, CartDrawer, Footer
-│   ├── page.tsx            ← Home (placeholder, shows product count)
-│   ├── globals.css         ← Base Tailwind + scrollbar styles
-│   ├── women/
-│   │   └── page.tsx        ← /women — SSG, editorial banner, CatalogView
-│   ├── kids/
-│   │   └── page.tsx        ← /kids — SSG + Suspense, KidsCatalogClient
-│   └── product/
-│       └── [slug]/
-│           └── page.tsx    ← /product/[slug] — SSG×16, generateStaticParams, OG metadata
+│   ├── account/page.tsx        ← Client dashboard: 4 tabs (Online Orders, Store Purchases, Addresses, Profile)
+│   ├── inventory/page.tsx      ← Manager inventory dashboard: KPIs, stock alerts, filters, delivery modal, soft-delete
+│   ├── pos/page.tsx            ← POS Cashier screen: Barcode auto-focus (F2), hotkeys (F9), cart, quick pay
+│   ├── reports/page.tsx        ← Manager analytics: sales, profits, stock valuation
+│   ├── login/page.tsx          ← Auth page with Suspense boundary & role-based intelligent redirect
+│   ├── women/ & kids/          ← E-commerce catalog pages (SSG)
+│   └── product/[slug]/         ← Product Detail Page (PDP)
 ├── components/
 │   ├── common/
-│   │   ├── Header.tsx      ← Sticky header, logo (public/images/logo.jpg), nav, search, cart/wishlist icons
-│   │   ├── Footer.tsx      ← Brand + newsletter + links + TN payment icons
-│   │   ├── MobileMenu.tsx  ← Slide-out drawer, Women/Kids split
-│   │   └── Breadcrumbs.tsx ← Reusable, schema-friendly
-│   ├── cart/
-│   │   └── CartDrawer.tsx  ← Slide-in cart, quantity controls, free shipping bar
-│   ├── catalog/
-│   │   ├── ProductCard.tsx         ← Dual-image hover, badges, wishlist, color swatches
-│   │   ├── FilterPanel.tsx         ← Desktop sidebar filter (sizes top+expanded, counts, muted OOS)
-│   │   ├── MobileFilterDrawer.tsx  ← Slide-up bottom sheet with Apply/Reset
-│   │   ├── SortDropdown.tsx        ← Featured / Newest / Price ↑↓
-│   │   ├── CatalogView.tsx         ← Orchestrates sidebar + grid + mobile pill
-│   │   └── KidsCatalogClient.tsx   ← Age-first tabs (0-12m, 1-3y, 4-7y, 8-12y) with counts
-│   └── product/
-│       ├── PDPClient.tsx       ← Full PDP — all 11 spec sections, mobile sticky bar
-│       ├── ImageGallery.tsx    ← Desktop thumbnail strip + zoom, Mobile swipe carousel + dots
-│       ├── SizeGuideModal.tsx  ← Women (Bust/Waist/Hips) + Kids (Height/Weight/Chest) charts
-│       └── Accordion.tsx       ← Reusable open/close accordion (Fabric, Care, Returns)
-├── context/
-│   ├── CartContext.tsx      ← items, qty, add/update/remove, subtotal, localStorage, freeShippingThreshold
-│   ├── WishlistContext.tsx  ← toggle, isInWishlist, count, localStorage
-│   └── ToastContext.tsx     ← showToast(text, type), 3.5s auto-dismiss, bottom-right stack
-├── data/
-│   └── products.json       ← 16 products (8 women, 8 kids)
-├── types/
-│   └── product.ts          ← Product, CartItem, FilterState, ProductColor, ProductSize, Category, KidsAgeGroup
-└── utils/
-    └── currency.ts         ← formatPrice(), getDiscountPercentage()
+│   │   ├── Header.tsx          ← Role-aware account menu (Guest / Client / Cashier / Manager shortcuts)
+│   │   ├── MobileMenu.tsx      ← Mobile drawer with discrete staff access
+│   │   └── Footer.tsx          ← Footer with discrete staff login link
+│   ├── pos/
+│   │   ├── BarcodeTagModal.tsx ← Thermal sticker printing (50mm × 30mm) via Code-128 SVG
+│   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
+│   │   ├── PaymentDrawer.tsx   ← Cash / Card payment drawer with change calculator
+│   │   ├── ProductSearchDrawer.tsx ← Manual variant & SKU search modal
+│   │   └── ReceiptModal.tsx    ← Post-sale ticket modal with printable receipt
+├── utils/
+│   ├── supabaseClient.ts       ← createBrowserClient (@supabase/ssr) storing session in cookies
+│   ├── posAudio.ts             ← Web Audio API scanner feedback (success / error beeps)
+│   └── currency.ts             ← Dinar formatting (e.g., "149.000 DT")
 ```
 
 ---
 
-## Data Schema (product.ts)
+## 5. Live Test Catalog & Barcodes (Ready for Scanning & Printing)
 
-```ts
-Product {
-  id, slug, name, description
-  price: number          // TND
-  salePrice?: number     // TND, null if no sale
-  category: 'women' | 'kids'
-  subcategory: string
-  ageGroup?: '0-12m' | '1-3y' | '4-7y' | '8-12y'  // kids only
-  colors: { name, hex, imageIndex }[]
-  sizes: { size, inStock, stockCount? }[]
-  images: string[]       // [main, hover, detail_1, ...]
-  fabric: string
-  care: string[]
-  isNew: boolean
-  isBestSeller: boolean
-  rating?: number
-  reviewCount?: number
-}
-```
-
-### Product Data Facts
-- **Women subcategories**: Robes, Vestes & Manteaux, Pulls & Mailles, Pantalons, Chemises & Blouses, Jupes, Ensembles
-- **Women sizes**: XS S M L XL / 34 36 38 40 42
-- **Kids subcategories**: Bébé & Naissance, Tricots & Gilets, Pantalons & Salopettes, Robes, Ensembles, Sweats & Pulls, Vestes & Chemises, Jupes & Robes
-- **Kids sizes**: 0-3m 3-6m 6-9m 9-12m / 1-3m 6-12m / 12-18m 18-24m 2-3y / 4-5y 5-6y 6-7y / 8-9y 9-10y 10-11y 11-12y
-- **Price range**: 45–285 TND
+| Product | SKU | Barcode (EAN-13 / Code-128) | Attributes | Selling Price | Initial Stock |
+|---|---|---|---|---|---|
+| **Robe Soirée Satin** | `ROBE-SAT-NOIR-M` | `6191000000018` | M • Noir | 149.000 DT | 15 |
+| **Chemise Lin Blanche** | `CHEM-LIN-BLC-L` | `6191000000025` | L • Blanc | 89.000 DT | 25 |
+| **Blazer Oversize Camel** | `BLAZ-OVR-CAM-S` | `6191000000032` | S • Camel | 189.000 DT | 10 |
+| **Pantalon Tailleur Noir** | `PANT-TAIL-NOIR-38` | `6191000000049` | 38 • Noir | 119.000 DT | 20 |
+| **Robe Florale Été** | `ROBE-FLOR-M` | `6191234567890` | M • Floral | 89.500 DT | 20 |
 
 ---
 
-## Providers (layout.tsx wrapping order)
+## 6. Vercel Deployment Checklist
 
-```
-ToastProvider
-  └── CartProvider
-        └── WishlistProvider
-              ├── Header
-              ├── CartDrawer
-              ├── <main>{children}</main>
-              └── Footer
-```
+- **Required Environment Variables**:
+  - `NEXT_PUBLIC_SUPABASE_URL`: `https://uqwvbbuxriiduedhdqwl.supabase.co`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `ey...`
+- **Supabase Auth Config**:
+  - `site_url`: `https://toptendance.tn`
+  - `uri_allow_list`: `https://toptendance.tn/**,http://localhost:3000/**`
 
 ---
 
-## Routes Built
+## 7. Status & Last Session Recap
 
-| Route | Status | Notes |
-|---|---|---|
-| `/` | ✅ Done | Flagship Home: Dual hero (Women/Kids), categories grid, interactive new/bestseller showcase, storytelling block, trust strip, VIP club |
-| `/women` | ✅ Done | SSG, editorial banner, full catalog + filters |
-| `/kids` | ✅ Done | SSG, age tabs, pastel UI, full catalog + filters |
-| `/product/[slug]` | ✅ Done | SSG×16, image gallery, PDP layout, size guide, mobile sticky bar |
-| `/search` | ✅ Done | Live search query, tag filtering (new/bestseller), category tabs, sort |
-| `/cart` | ✅ Done | Full cart page with table, free shipping progress, summary |
-| `/checkout` | ✅ Done | 3-step checkout form (Contact, TN Governorates, COD/Konnect), sticky sidebar |
-| `/wishlist` | ✅ Done | Saved items grid, move to cart, empty state + recommendations |
-| `/login` | ✅ Done | Client authentication form with validation styling |
-| `/register` | ✅ Done | Account creation form (name, email, phone, password) |
-| `/account` | ✅ Done | Dashboard with orders history, addresses carnet, profile |
-| `/about` | ✅ Done | Brand story, editorial craftsmanship, pillars |
-| `/contact` | ✅ Done | Form, phone, WhatsApp direct link, boutique hours |
-| `/shipping-returns` | ✅ Done | Delivery delays across 24 governorates, 14-day return rules |
-
----
-
-## Phases Progress
-
-| Phase | Status |
-|---|---|
-| **1 — Project Setup & Design System** | ✅ Complete |
-| **2 — Global Shell & State Management** | ✅ Complete |
-| **3 — Catalog & Category Pages** | ✅ Complete |
-| **4 — Product Detail Page (PDP)** | ✅ Complete |
-| **5 — Cart & Checkout Flow** | ✅ Complete |
-| **6 — Wishlist Page** | ✅ Complete |
-| **7 — Quality, Accessibility & Mobile Audit** | ✅ Complete |
-| **8 — Performance & SEO** | ✅ Complete |
-
----
-
-## Known Patterns & Conventions
-
-- `'use client'` required on any component using hooks or browser APIs
-- Server pages import data directly from `src/data/products.json` (no API)
-- `CatalogView` is the shared orchestrator for both `/women` and `/kids`
-- Kids pages use `Suspense` boundary because `KidsCatalogClient` uses `useSearchParams()`
-- Filter counts are computed with **facet exclusion** (clicking a size shows how many items still match all other filters, not just that size)
-- `FilterPanel` exported `FilterState` type — used by `CatalogView`, `MobileFilterDrawer`, and `KidsCatalogClient`
-- All interactive filter/sort state lives in `CatalogView` and is passed down as props
-- Build verified: `next build` exits code 0, all routes SSG
-
----
-
-## Important Config Files
-
-- `tailwind.config.ts` — custom colors, fonts, borderRadius, boxShadow
-- `next.config.mjs` — image remotePatterns (unsplash)
-- `tsconfig.json` — `@/` path alias → `./src/`
-- `package.json` — `"type": "module"`, Next 14.2.x
-
----
-
-## Last Updated
-- **Session**: 2026-11-01
-- **Last completed**: Phase 7 (Quality, Accessibility & Mobile Audit + SEO)
-- **Status**: All Checklist Milestones Complete!
-
+- **All checklists completed & verified**:
+  - `checklist_extended.md` ✅ (POS, Inventory, RPCs, Thermal Barcodes, Analytics)
+  - `checklist_client_dashboard.md` ✅ (Role-based Header, Supabase Client Dashboard, Next.js Middleware)
+  - `checklist_auth_fix.md` ✅ (Cookie-based auth synchronization between client and middleware)
+  - `checklist_delete_product.md` ✅ (Soft delete with confirmation dialog and RLS policies)
+  - `checklist_test_products.md` ✅ (4 Fashion items with Tunisian barcodes, label printing verified)
+- **Build**: Passes cleanly with 35 SSG routes and Middleware (`npm run build` exits 0).

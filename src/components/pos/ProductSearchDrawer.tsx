@@ -87,13 +87,13 @@ export default function ProductSearchDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col p-6 animate-in slide-in-from-right duration-200">
-        <div className="flex justify-between items-center pb-4 border-b">
-          <h3 className="font-bold text-lg text-gray-900">Recherche d'articles</h3>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end bg-black/50 backdrop-blur-xs">
+      <div className="bg-white w-full sm:max-w-md h-[90vh] sm:h-full shadow-2xl flex flex-col p-4 sm:p-6 rounded-t-2xl sm:rounded-none animate-in slide-in-from-bottom sm:slide-in-from-right duration-200">
+        <div className="flex justify-between items-center pb-3 sm:pb-4 border-b">
+          <h3 className="font-bold text-base sm:text-lg text-gray-900">Recherche d'articles</h3>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
           >
             <X size={20} />
           </button>

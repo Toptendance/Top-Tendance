@@ -87,15 +87,15 @@ export default function DeliveryReceivingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-2xl w-full flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 max-w-2xl w-full flex flex-col max-h-[92vh]">
         <div className="flex justify-between items-center pb-3 border-b">
           <div className="flex items-center gap-2">
             <PackageCheck size={20} className="text-gray-900" />
-            <h3 className="font-bold text-lg text-gray-900">Réceptionner une Livraison</h3>
+            <h3 className="font-bold text-base sm:text-lg text-gray-900">Réceptionner une Livraison</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={20} />
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition">
+            <X size={18} />
           </button>
         </div>
 

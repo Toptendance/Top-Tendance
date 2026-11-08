@@ -432,50 +432,51 @@ export default function PosPage() {
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans select-none">
       {/* Top Navigation Bar */}
-      <header className="bg-black text-white px-6 py-3 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-4">
-          <h1 className="font-black text-lg tracking-wider uppercase">Top Tendance POS</h1>
-          <span className="text-xs bg-gray-800 text-gray-300 px-2.5 py-1 rounded-full font-mono">
+      <header className="bg-black text-white px-4 sm:px-6 py-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <h1 className="font-black text-base sm:text-lg tracking-wider uppercase">Top Tendance POS</h1>
+          <span className="text-[10px] sm:text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-mono">
             V1.0
           </span>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 text-sm">
-            <User size={16} className="text-gray-400" />
-            <span className="font-medium text-gray-200">
+        <div className="flex items-center gap-3 sm:gap-6">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+            <User size={15} className="text-gray-400 shrink-0" />
+            <span className="font-medium text-gray-200 hidden sm:inline max-w-[120px] truncate">
               {userProfile?.full_name || currentUser.email}
             </span>
-            <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono uppercase">
+            <span className="text-[10px] sm:text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono uppercase">
               {userProfile?.role || 'user'}
             </span>
           </div>
 
           <button
             onClick={handleLogout}
-            className="text-gray-400 hover:text-white flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 rounded-lg hover:bg-gray-800 transition"
+            className="text-gray-400 hover:text-white flex items-center gap-1 text-xs font-semibold py-1 px-2.5 rounded-lg hover:bg-gray-800 transition"
           >
-            <LogOut size={14} /> Déconnexion
+            <LogOut size={13} />
+            <span className="hidden sm:inline">Déconnexion</span>
           </button>
         </div>
       </header>
 
       {/* Main POS Interface */}
-      <div className="flex-1 p-6 grid grid-cols-12 gap-6 max-w-7xl mx-auto w-full overflow-hidden">
-        {/* Left Column: Barcode & Product Action Area (7 cols) */}
-        <div className="col-span-7 flex flex-col gap-4">
+      <div className="flex-1 p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 max-w-7xl mx-auto w-full pb-24 lg:pb-6">
+        {/* Left Column: Barcode & Product Action Area (7 cols on lg+) */}
+        <div className="lg:col-span-7 flex flex-col gap-4">
           {/* Scanner Card */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-3">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
-                <Barcode size={16} /> Scanner Code-barres (F2)
+          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-3">
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+                <Barcode size={16} /> Scanner Code-barres <span className="hidden sm:inline">(F2)</span>
               </label>
               <button
                 type="button"
                 onClick={() => setIsSearchOpen(true)}
-                className="text-xs font-semibold text-gray-700 hover:text-black flex items-center gap-1 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition"
+                className="text-xs font-semibold text-gray-700 hover:text-black flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0"
               >
-                <Search size={14} /> Recherche Manuelle
+                <Search size={15} /> Recherche Manuelle
               </button>
             </div>
 
@@ -485,12 +486,12 @@ export default function PosPage() {
                 type="text"
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
-                placeholder="Scannez ou saisissez le code-barres / SKU..."
-                className="w-full pl-4 pr-24 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl font-mono text-base focus:bg-white focus:border-black outline-none transition"
+                placeholder="Scannez ou saisissez code-barres / SKU..."
+                className="w-full pl-3.5 pr-24 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl font-mono text-base focus:bg-white focus:border-black outline-none transition"
               />
               <button
                 type="submit"
-                className="absolute right-2 top-2 bottom-2 bg-black text-white px-4 rounded-lg font-bold text-xs hover:bg-gray-800 transition"
+                className="absolute right-1.5 top-1.5 bottom-1.5 bg-black text-white px-4 rounded-lg font-bold text-xs hover:bg-gray-800 transition flex items-center justify-center min-w-[70px]"
               >
                 Ajouter
               </button>
@@ -498,52 +499,52 @@ export default function PosPage() {
 
             {cartError && (
               <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
-                <AlertCircle size={16} />
-                <span>{cartError}</span>
+                <AlertCircle size={16} className="shrink-0" />
+                <span className="leading-tight">{cartError}</span>
               </div>
             )}
           </div>
 
           {/* Quick Help & Hotkeys Bar */}
-          <div className="bg-white/60 border border-gray-200 p-3 rounded-xl flex items-center justify-between text-xs text-gray-500">
-            <span className="font-semibold text-gray-700">Raccourcis Clavier:</span>
-            <div className="flex gap-4">
-              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">F2</kbd> Focus Scanner</span>
-              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">F9</kbd> Encaissement</span>
-              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">Esc</kbd> Annuler</span>
+          <div className="bg-white/70 border border-gray-200 p-3 rounded-xl flex flex-wrap items-center justify-between text-xs text-gray-500 gap-2">
+            <span className="font-semibold text-gray-700">Raccourcis:</span>
+            <div className="flex flex-wrap gap-2 sm:gap-4">
+              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">F2</kbd> Scanner</span>
+              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">F9</kbd> Payer</span>
+              <span><kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-black font-bold">Esc</kbd> Fermer</span>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Ticket / Cart (5 cols) */}
-        <div className="col-span-5 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        {/* Right Column: Ticket / Cart (5 cols on lg+) */}
+        <div className="lg:col-span-5 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <ShoppingBag size={18} className="text-gray-700" />
               <h2 className="font-bold text-base text-gray-900">Panier en cours</h2>
             </div>
-            <span className="text-xs font-semibold bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-semibold bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full font-mono">
               {cart.reduce((s, i) => s + i.quantity, 0)} articles
             </span>
           </div>
 
           {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[350px] max-h-[460px]">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 sm:space-y-3 min-h-[220px] max-h-[380px] lg:max-h-[460px]">
             {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 py-12">
-                <Barcode size={48} className="stroke-1 mb-2 text-gray-300" />
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 py-10 sm:py-12">
+                <Barcode size={44} className="stroke-1 mb-2 text-gray-300" />
                 <p className="text-sm">Aucun article dans le panier</p>
-                <p className="text-xs text-gray-400 mt-1">Scannez un code-barres pour commencer</p>
+                <p className="text-xs text-gray-400 mt-0.5">Scannez un code-barres ou recherchez un article</p>
               </div>
             ) : (
               cart.map((item) => (
                 <div
                   key={item.variant_id}
-                  className="flex items-center justify-between p-3 border rounded-xl hover:border-gray-300 bg-gray-50/50"
+                  className="flex items-center justify-between p-3 border rounded-xl hover:border-gray-300 bg-gray-50/50 gap-2"
                 >
-                  <div className="flex-1 pr-2">
-                    <p className="font-bold text-sm text-gray-900 line-clamp-1">{item.name}</p>
-                    <p className="text-xs text-gray-500 font-mono">
+                  <div className="flex-1 min-w-0 pr-1">
+                    <p className="font-bold text-sm text-gray-900 truncate">{item.name}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">
                       {item.sku} {item.size ? `• ${item.size}` : ''} {item.color ? `• ${item.color}` : ''}
                     </p>
                     <p className="text-xs font-bold text-gray-800 mt-0.5">
@@ -551,29 +552,32 @@ export default function PosPage() {
                     </p>
                   </div>
 
-                  {/* Quantity controls */}
-                  <div className="flex items-center gap-1.5">
+                  {/* Quantity controls - Touch friendly 36px+ */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => updateQuantity(item.variant_id, -1)}
-                      className="w-7 h-7 bg-white border border-gray-300 rounded-lg flex items-center justify-center hover:bg-gray-100"
+                      className="w-9 h-9 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-lg flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 transition text-gray-700"
+                      aria-label="Diminuer quantité"
                     >
-                      <Minus size={12} />
+                      <Minus size={14} />
                     </button>
-                    <span className="w-8 text-center font-mono font-bold text-sm">
+                    <span className="w-7 text-center font-mono font-bold text-sm">
                       {item.quantity}
                     </span>
                     <button
                       type="button"
                       onClick={() => updateQuantity(item.variant_id, 1)}
-                      className="w-7 h-7 bg-white border border-gray-300 rounded-lg flex items-center justify-center hover:bg-gray-100"
+                      className="w-9 h-9 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-lg flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 transition text-gray-700"
+                      aria-label="Augmenter quantité"
                     >
-                      <Plus size={12} />
+                      <Plus size={14} />
                     </button>
                     <button
                       type="button"
                       onClick={() => removeItem(item.variant_id)}
-                      className="ml-2 text-gray-400 hover:text-red-600 p-1"
+                      className="ml-1 text-gray-400 hover:text-red-600 p-2 sm:p-1.5 rounded-lg hover:bg-red-50 transition"
+                      aria-label="Supprimer l'article"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -583,7 +587,7 @@ export default function PosPage() {
             )}
           </div>
 
-          {/* Cart Bottom Summary & Checkout Button */}
+          {/* Cart Bottom Summary & Checkout Button (Desktop / Tablet inside card) */}
           <div className="p-4 border-t bg-gray-50 space-y-3">
             <div className="flex justify-between items-baseline">
               <span className="text-sm font-semibold text-gray-600">Total à payer:</span>
@@ -596,13 +600,35 @@ export default function PosPage() {
               type="button"
               disabled={cart.length === 0}
               onClick={() => setIsPaymentOpen(true)}
-              className="w-full bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition shadow-md"
+              className="w-full bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition shadow-md text-sm sm:text-base min-h-[48px]"
             >
               <CreditCard size={18} />
               <span>Encaisser (F9)</span>
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Floating Sticky Mobile Cart Summary & Checkout Bar (Visible on mobile screens) */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 shadow-lg z-40 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">
+            Total ({cart.reduce((s, i) => s + i.quantity, 0)} articles)
+          </p>
+          <p className="text-lg font-black font-mono text-gray-950 leading-tight">
+            {totalCartAmount.toFixed(3)} DT
+          </p>
+        </div>
+
+        <button
+          type="button"
+          disabled={cart.length === 0}
+          onClick={() => setIsPaymentOpen(true)}
+          className="bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold px-5 py-3 rounded-xl flex items-center gap-2 transition shadow-md text-sm min-h-[44px]"
+        >
+          <CreditCard size={16} />
+          <span>Encaisser ({totalCartAmount.toFixed(3)} DT)</span>
+        </button>
       </div>
 
       {/* Drawers and Modals */}
