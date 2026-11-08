@@ -1,13 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Search, Heart, ShoppingBag, Menu, X, ArrowRight } from 'lucide-react';
+import {
+  Search,
+  Heart,
+  ShoppingBag,
+  Menu,
+  X,
+  ArrowRight,
+  User,
+  LogOut,
+  LayoutDashboard,
+  Boxes,
+  TrendingUp,
+  CreditCard,
+  ChevronDown
+} from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { MobileMenu } from './MobileMenu';
+import { supabase } from '@/utils/supabaseClient';
 
 export function Header() {
   const router = useRouter();
@@ -16,6 +31,62 @@ export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // User Auth & Role State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setCurrentUser(session.user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      }
+    }
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setCurrentUser(session.user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      } else {
+        setCurrentUser(null);
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Close account dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAccountMenuOpen(false);
+    router.push('/');
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +179,120 @@ export function Header() {
               >
                 <Search className="w-5 h-5 stroke-[1.75]" />
               </button>
+
+              {/* User Account / Staff Dropdown */}
+              <div className="relative" ref={accountMenuRef}>
+                <button
+                  onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+                  className="p-2 text-charcoal hover:text-charcoal-600 transition flex items-center gap-1"
+                  aria-label="Mon Compte / Administration"
+                >
+                  <User className="w-5 h-5 stroke-[1.75]" />
+                  {currentUser && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 hidden sm:inline-block" />
+                  )}
+                </button>
+
+                {isAccountMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-border py-2 z-50 text-xs animate-in fade-in slide-in-from-top-2 duration-150">
+                    {/* Header info */}
+                    <div className="px-4 py-2 border-b border-border/60">
+                      <p className="font-semibold text-charcoal truncate">
+                        {userProfile?.full_name || currentUser?.email || 'Invité'}
+                      </p>
+                      <p className="text-[10px] text-charcoal-400 capitalize">
+                        {userProfile?.role === 'manager'
+                          ? '👑 Responsable Boutique'
+                          : userProfile?.role === 'cashier'
+                          ? '💼 Caissier'
+                          : currentUser
+                          ? 'Client'
+                          : 'Non connecté'}
+                      </p>
+                    </div>
+
+                    <div className="py-1">
+                      {!currentUser ? (
+                        <>
+                          <Link
+                            href="/login"
+                            onClick={() => setIsAccountMenuOpen(false)}
+                            className="block px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
+                          >
+                            Se connecter
+                          </Link>
+                          <Link
+                            href="/register"
+                            onClick={() => setIsAccountMenuOpen(false)}
+                            className="block px-4 py-2 hover:bg-cream text-charcoal transition"
+                          >
+                            Créer un compte
+                          </Link>
+                          <div className="border-t border-border/50 my-1" />
+                          <Link
+                            href="/pos"
+                            onClick={() => setIsAccountMenuOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal-600 transition"
+                          >
+                            <CreditCard size={14} /> Espace Caisse POS
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          {/* Client or general account link */}
+                          <Link
+                            href="/account"
+                            onClick={() => setIsAccountMenuOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
+                          >
+                            <User size={14} /> Mon Espace Client
+                          </Link>
+
+                          {/* Cashier or Manager POS quick link */}
+                          {(userProfile?.role === 'cashier' || userProfile?.role === 'manager') && (
+                            <Link
+                              href="/pos"
+                              onClick={() => setIsAccountMenuOpen(false)}
+                              className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
+                            >
+                              <CreditCard size={14} /> Caisse Enregistreuse (POS)
+                            </Link>
+                          )}
+
+                          {/* Manager-only Links */}
+                          {userProfile?.role === 'manager' && (
+                            <>
+                              <div className="border-t border-border/50 my-1" />
+                              <Link
+                                href="/inventory"
+                                onClick={() => setIsAccountMenuOpen(false)}
+                                className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
+                              >
+                                <Boxes size={14} /> Gestion Stock & Inventaire
+                              </Link>
+                              <Link
+                                href="/reports"
+                                onClick={() => setIsAccountMenuOpen(false)}
+                                className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
+                              >
+                                <TrendingUp size={14} /> Rapports & Analytics
+                              </Link>
+                            </>
+                          )}
+
+                          <div className="border-t border-border/50 my-1" />
+                          <button
+                            onClick={handleLogout}
+                            className="w-full text-left flex items-center gap-2 px-4 py-2 hover:bg-red-50 text-red-600 transition"
+                          >
+                            <LogOut size={14} /> Déconnexion
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Wishlist Link */}
               <Link

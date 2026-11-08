@@ -1,9 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { X, ChevronRight, Heart, User, Sparkles, Flame, HelpCircle } from 'lucide-react';
+import {
+  X,
+  ChevronRight,
+  Heart,
+  User,
+  Sparkles,
+  Flame,
+  HelpCircle,
+  CreditCard,
+  Boxes,
+  TrendingUp,
+  LogOut
+} from 'lucide-react';
 import { useWishlist } from '@/context/WishlistContext';
+import { supabase } from '@/utils/supabaseClient';
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -13,6 +26,31 @@ interface MobileMenuProps {
 export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
   const [activeTab, setActiveTab] = useState<'women' | 'kids'>('women');
   const { wishlistCount } = useWishlist();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setCurrentUser(session.user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      }
+    }
+    loadAuth();
+  }, [isOpen]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setUserProfile(null);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -209,8 +247,56 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
             </Link>
           </div>
 
-          {/* Client services */}
-          <div className="p-4 space-y-1 text-xs text-charcoal-600">
+          {/* Client services & Staff shortcuts */}
+          <div className="p-4 space-y-1 text-xs text-charcoal-600 border-t border-border">
+            {currentUser && (
+              <div className="px-3 py-2 bg-cream-50 rounded-lg mb-2">
+                <p className="font-semibold text-charcoal text-xs truncate">
+                  {userProfile?.full_name || currentUser.email}
+                </p>
+                <p className="text-[10px] text-charcoal-500 capitalize">
+                  {userProfile?.role === 'manager'
+                    ? '👑 Responsable Boutique'
+                    : userProfile?.role === 'cashier'
+                    ? '💼 Caissier'
+                    : 'Client'}
+                </p>
+              </div>
+            )}
+
+            {/* Staff Shortcuts */}
+            {(userProfile?.role === 'cashier' || userProfile?.role === 'manager') && (
+              <Link
+                href="/pos"
+                onClick={onClose}
+                className="flex items-center gap-2 px-3 py-2 font-semibold text-charcoal bg-amber-50 rounded-lg mb-1"
+              >
+                <CreditCard className="w-4 h-4 text-amber-700" />
+                <span>Caisse Enregistreuse (POS)</span>
+              </Link>
+            )}
+
+            {userProfile?.role === 'manager' && (
+              <>
+                <Link
+                  href="/inventory"
+                  onClick={onClose}
+                  className="flex items-center gap-2 px-3 py-2 font-semibold text-charcoal hover:bg-cream rounded-lg"
+                >
+                  <Boxes className="w-4 h-4" />
+                  <span>Gestion Stock & Inventaire</span>
+                </Link>
+                <Link
+                  href="/reports"
+                  onClick={onClose}
+                  className="flex items-center gap-2 px-3 py-2 font-semibold text-charcoal hover:bg-cream rounded-lg"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span>Rapports & Ventes</span>
+                </Link>
+              </>
+            )}
+
             <Link
               href="/shipping-returns"
               onClick={onClose}
@@ -232,14 +318,25 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
             >
               Boutique & Contact (Tunis)
             </Link>
-            <Link
-              href="/login"
-              onClick={onClose}
-              className="flex items-center gap-2 px-3 py-2 font-medium text-charcoal hover:underline pt-2"
-            >
-              <User className="w-4 h-4" />
-              <span>Se connecter / S'inscrire</span>
-            </Link>
+
+            {!currentUser ? (
+              <Link
+                href="/login"
+                onClick={onClose}
+                className="flex items-center gap-2 px-3 py-2 font-medium text-charcoal hover:underline pt-2"
+              >
+                <User className="w-4 h-4" />
+                <span>Se connecter / S'inscrire</span>
+              </Link>
+            ) : (
+              <button
+                onClick={handleLogout}
+                className="w-full text-left flex items-center gap-2 px-3 py-2 font-medium text-red-600 hover:bg-red-50 rounded-lg pt-2 transition"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Se déconnecter</span>
+              </button>
+            )}
           </div>
         </div>
 

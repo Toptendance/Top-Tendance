@@ -247,7 +247,16 @@ export function Footer() {
 
         {/* Bottom Bar: Payments & Copyright */}
         <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-charcoal-500">
-          <p>© {new Date().getFullYear()} Top Tendance Tunisie. Tous droits réservés.</p>
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            <p>© {new Date().getFullYear()} Top Tendance Tunisie. Tous droits réservés.</p>
+            <span className="hidden sm:inline text-gray-300">•</span>
+            <Link
+              href="/pos"
+              className="text-charcoal-400 hover:text-charcoal transition underline-offset-2 hover:underline text-[11px]"
+            >
+              Espace Personnel & Caisse (POS)
+            </Link>
+          </div>
 
           {/* Payment badges */}
           <div className="flex items-center gap-2 flex-wrap justify-center">

@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
+import { supabase } from '@/utils/supabaseClient';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo');
   const { showToast } = useToast();
 
   const [email, setEmail] = useState('');
@@ -16,7 +19,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       showToast('Veuillez renseigner votre email et mot de passe', 'error');
@@ -24,11 +27,41 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
       showToast('Connexion réussie ! Bienvenue sur Top Tendance.', 'success');
-      router.push('/account');
-    }, 1000);
+
+      // Fetch user role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      const userRole = profile?.role;
+
+      if (redirectTo) {
+        router.push(redirectTo);
+      } else if (userRole === 'manager') {
+        router.push('/inventory');
+      } else if (userRole === 'cashier') {
+        router.push('/pos');
+      } else {
+        router.push('/account');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Identifiants incorrects', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -129,3 +162,10 @@ export default function LoginPage() {
   );
 }
 
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center">Chargement...</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
