@@ -19,7 +19,11 @@ import {
   RefreshCw,
   Edit2,
   Trash2,
-  Camera
+  Camera,
+  Sparkles,
+  FolderTree,
+  Check,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -58,6 +62,14 @@ export default function InventoryDashboardPage() {
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatDesc, setNewCatDesc] = useState('');
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+  const [editingCatDesc, setEditingCatDesc] = useState('');
+  const [catActionLoading, setCatActionLoading] = useState(false);
+  const [catError, setCatError] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -76,6 +88,38 @@ export default function InventoryDashboardPage() {
     low_stock_threshold: '5',
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSkuDuplicate, setIsSkuDuplicate] = useState(false);
+
+  // Helper: Generate structured SKU from product name, size, and color
+  const generateSku = (name: string, size: string, color: string): string => {
+    const cleanStr = (str: string) =>
+      str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, ' ')
+        .trim();
+
+    const nameParts = cleanStr(name)
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => (word.length <= 4 ? word : word.slice(0, 4)));
+
+    const baseName = nameParts.length > 0 ? nameParts.join('-') : 'PROD';
+    const cleanSize = cleanStr(size) || 'U';
+    const cleanColor = cleanStr(color) || 'STD';
+
+    return `${baseName}-${cleanSize}-${cleanColor}`;
+  };
+
+  const handleAutoGenerateSku = () => {
+    const newSku = generateSku(productForm.name, productForm.size, productForm.color);
+    setProductForm((prev) => ({ ...prev, sku: newSku }));
+    setIsSkuDuplicate(false);
+    if (formError && formError.includes('SKU')) {
+      setFormError(null);
+    }
+  };
 
   const fetchInventory = async () => {
     setLoading(true);
@@ -177,6 +221,7 @@ export default function InventoryDashboardPage() {
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setIsSkuDuplicate(false);
     try {
       // 1. Insert product
       const { data: prod, error: pErr } = await supabase
@@ -207,7 +252,11 @@ export default function InventoryDashboardPage() {
         .select()
         .single();
 
-      if (vErr) throw vErr;
+      if (vErr) {
+        // If variant insert failed, rollback product to prevent orphaned records
+        await supabase.from('products').delete().eq('id', prod.id);
+        throw vErr;
+      }
 
       // 3. Insert cost price into variant_costs
       if (productForm.cost_price) {
@@ -233,7 +282,99 @@ export default function InventoryDashboardPage() {
       });
       fetchInventory();
     } catch (err: any) {
-      setFormError(err.message || 'Erreur lors de la création');
+      if (err?.code === '23505' || err?.message?.includes('variants_sku_key') || err?.message?.includes('duplicate key') || err?.message?.toLowerCase()?.includes('sku')) {
+        setIsSkuDuplicate(true);
+        setFormError("Ce SKU existe déjà. Modifiez-le ou utilisez le bouton 'Auto-générer'.");
+      } else {
+        setFormError(err.message || 'Erreur lors de la création');
+      }
+    }
+  };
+
+  // Category Management Handlers
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    setCatActionLoading(true);
+    setCatError(null);
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .insert({
+          name: newCatName.trim(),
+          description: newCatDesc.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      showToast(`Catégorie « ${newCatName.trim()} » créée avec succès`, 'success');
+      setNewCatName('');
+      setNewCatDesc('');
+      fetchInventory();
+    } catch (err: any) {
+      setCatError(err?.message || 'Erreur lors de la création de la catégorie');
+    } finally {
+      setCatActionLoading(false);
+    }
+  };
+
+  const handleUpdateCategory = async (catId: string) => {
+    if (!editingCatName.trim()) return;
+    setCatActionLoading(true);
+    setCatError(null);
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          name: editingCatName.trim(),
+          description: editingCatDesc.trim() || null,
+        })
+        .eq('id', catId);
+
+      if (error) throw error;
+      showToast(`Catégorie mise à jour`, 'success');
+      setEditingCatId(null);
+      fetchInventory();
+    } catch (err: any) {
+      setCatError(err?.message || 'Erreur lors de la mise à jour');
+    } finally {
+      setCatActionLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    setCatActionLoading(true);
+    setCatError(null);
+    try {
+      // Guard: Check if products belong to this category
+      const { count, error: countErr } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('category_id', catId);
+
+      if (countErr) throw countErr;
+
+      if (count && count > 0) {
+        setCatError(`Impossible de supprimer « ${catName} » : elle contient ${count} produit(s). Réaffectez-les avant de supprimer.`);
+        return;
+      }
+
+      const { error: delErr } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', catId);
+
+      if (delErr) throw delErr;
+      showToast(`Catégorie « ${catName} » supprimée`, 'info');
+      if (selectedCategory === catId) {
+        setSelectedCategory('all');
+      }
+      fetchInventory();
+    } catch (err: any) {
+      setCatError(err?.message || 'Erreur lors de la suppression');
+    } finally {
+      setCatActionLoading(false);
     }
   };
 
@@ -398,6 +539,19 @@ export default function InventoryDashboardPage() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCatError(null);
+                setIsCategoryModalOpen(true);
+              }}
+              title="Gérer les catégories"
+              className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 min-h-[40px] transition shrink-0"
+            >
+              <FolderTree size={15} />
+              <span className="hidden md:inline">Gérer Catégories</span>
+            </button>
 
             <button
               onClick={fetchInventory}
@@ -684,17 +838,38 @@ export default function InventoryDashboardPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                    SKU (Unique)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase">
+                      SKU (Unique)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoGenerateSku}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 hover:underline"
+                    >
+                      <Sparkles size={11} /> Auto-générer
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     value={productForm.sku}
-                    onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
-                    className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono"
-                    placeholder="CHEM-LIN-BLANC-M"
+                    onChange={(e) => {
+                      setProductForm({ ...productForm, sku: e.target.value });
+                      if (isSkuDuplicate) setIsSkuDuplicate(false);
+                    }}
+                    className={`w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono transition ${
+                      isSkuDuplicate
+                        ? 'border-red-500 bg-red-50 focus:border-red-600 focus:ring-1 focus:ring-red-400'
+                        : 'border-gray-200'
+                    }`}
+                    placeholder="Ex: ROBE-SAT-M-NOIR"
                   />
+                  {isSkuDuplicate && (
+                    <p className="text-[10px] text-red-600 mt-1">
+                      SKU déjà existant dans la base.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
@@ -809,6 +984,202 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
       )}
+      {/* Category Manager Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-5 sm:p-6 max-w-lg w-full flex flex-col my-auto border border-gray-100 max-h-[88vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <FolderTree size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-gray-900">
+                    Gestion des Catégories
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Ajouter, renommer ou supprimer des catégories
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setEditingCatId(null);
+                  setCatError(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 p-1 text-sm font-semibold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {catError && (
+              <div className="mt-3 p-2.5 bg-red-50 text-red-700 text-xs rounded-lg flex items-start gap-1.5 border border-red-200">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>{catError}</span>
+              </div>
+            )}
+
+            {/* New Category Form */}
+            <form onSubmit={handleCreateCategory} className="mt-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 block">
+                + Nouvelle Catégorie
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="Nom (ex: Accessoires)"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  className="w-full text-xs p-2.5 border rounded-lg bg-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Description (optionnel)"
+                  value={newCatDesc}
+                  onChange={(e) => setNewCatDesc(e.target.value)}
+                  className="w-full text-xs p-2.5 border rounded-lg bg-white"
+                />
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={catActionLoading || !newCatName.trim()}
+                  className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 disabled:opacity-50 transition flex items-center gap-1.5"
+                >
+                  <Plus size={14} />
+                  <span>Ajouter</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Categories List */}
+            <div className="mt-4 flex-1 overflow-y-auto space-y-2 pr-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">
+                Catégories existantes ({categories.length})
+              </span>
+
+              {categories.length === 0 ? (
+                <p className="text-xs text-gray-400 py-4 text-center">Aucune catégorie</p>
+              ) : (
+                categories.map((c: any) => {
+                  const isEditing = editingCatId === c.id;
+                  const count = products.filter((p) => p.category_id === c.id).length;
+
+                  return (
+                    <div
+                      key={c.id}
+                      className="p-3 bg-white border border-gray-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs hover:border-gray-300 transition"
+                    >
+                      {isEditing ? (
+                        <div className="flex-1 space-y-1.5">
+                          <input
+                            type="text"
+                            value={editingCatName}
+                            onChange={(e) => setEditingCatName(e.target.value)}
+                            className="w-full text-xs p-1.5 border rounded-md"
+                            autoFocus
+                          />
+                          <input
+                            type="text"
+                            placeholder="Description (optionnel)"
+                            value={editingCatDesc}
+                            onChange={(e) => setEditingCatDesc(e.target.value)}
+                            className="w-full text-xs p-1.5 border rounded-md"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-gray-900 truncate">
+                              {c.name}
+                            </span>
+                            <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full shrink-0">
+                              {count} article{count !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          {c.description && (
+                            <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                              {c.description}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateCategory(c.id)}
+                              disabled={catActionLoading}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                              title="Sauvegarder"
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCatId(null)}
+                              className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition"
+                              title="Annuler"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCatId(c.id);
+                                setEditingCatName(c.name);
+                                setEditingCatDesc(c.description || '');
+                                setCatError(null);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition"
+                              title="Renommer"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(c.id, c.name)}
+                              disabled={catActionLoading}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-4 pt-3 border-t flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold hover:bg-gray-100"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       {productToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

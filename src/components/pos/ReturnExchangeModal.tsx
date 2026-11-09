@@ -8,16 +8,18 @@ import {
   Receipt, 
   CheckCircle, 
   AlertCircle, 
-  ShoppingBag,
-  Plus,
-  Minus,
-  Barcode,
-  Calendar,
-  CreditCard,
-  Banknote,
-  Gift,
-  ArrowRight
+  ShoppingBag, 
+  Plus, 
+  Minus, 
+  Barcode, 
+  Calendar, 
+  CreditCard, 
+  Banknote, 
+  Gift, 
+  ArrowRight,
+  Camera
 } from 'lucide-react';
+import MobileScannerModal from '@/components/pos/MobileScannerModal';
 import { supabase } from '@/utils/supabaseClient';
 import { formatPrice } from '@/utils/currency';
 import { playBeep } from '@/utils/posAudio';
@@ -46,6 +48,7 @@ export default function ReturnExchangeModal({
   const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
   // Already-returned quantities per sale_item_id (from previous returns on this sale)
   const [alreadyReturnedQtys, setAlreadyReturnedQtys] = useState<Record<string, number>>({});
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [returnType, setReturnType] = useState<'refund' | 'exchange'>('refund');
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'store_credit'>('cash');
   const [reason, setReason] = useState('Changement de taille / convenance');
@@ -128,9 +131,9 @@ export default function ReturnExchangeModal({
   };
 
   // Search original sale - Universal Search (UUID, Prefix, Barcode, or SKU)
-  const handleSearchSale = async (e?: React.FormEvent) => {
+  const handleSearchSale = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
-    const query = receiptQuery.trim();
+    const query = (customQuery !== undefined ? customQuery : receiptQuery).trim();
     if (!query) return;
 
     setIsLoadingSale(true);
@@ -445,6 +448,15 @@ export default function ReturnExchangeModal({
                   autoFocus
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => setIsCameraOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shrink-0"
+                title="Scanner avec la caméra du téléphone"
+              >
+                <Camera size={14} />
+                <span className="hidden sm:inline">Caméra</span>
+              </button>
               <button
                 type="submit"
                 disabled={isLoadingSale}
@@ -792,6 +804,18 @@ export default function ReturnExchangeModal({
           )}
         </div>
       </div>
+
+      {/* Mobile Camera Barcode Scanner Modal */}
+      <MobileScannerModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        title="Scanner Article / Ticket"
+        onScan={(decoded) => {
+          setIsCameraOpen(false);
+          setReceiptQuery(decoded);
+          handleSearchSale(undefined, decoded);
+        }}
+      />
     </div>
   );
 }
