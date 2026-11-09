@@ -15,11 +15,14 @@ import {
   ArrowLeft,
   RefreshCw,
   ShoppingBag,
-  Award
+  Award,
+  FileText
 } from 'lucide-react';
 import Link from 'next/link';
+import DetailedSalesJournal from '@/components/reports/DetailedSalesJournal';
 
 export default function ReportsAnalyticsPage() {
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'journal'>('overview');
   const [loading, setLoading] = useState(true);
   const [salesAnalytics, setSalesAnalytics] = useState<any>(null);
   const [stockValuation, setStockValuation] = useState<any>(null);
@@ -95,33 +98,61 @@ export default function ReportsAnalyticsPage() {
         </div>
 
         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
-          {/* Segmented Period Control - Full width on mobile */}
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold flex-1 sm:flex-initial justify-between sm:justify-start">
+          {/* Main View Tabs (Overview vs Journal) */}
+          <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold">
             <button
-              onClick={() => setSelectedPeriod('7')}
-              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
-                selectedPeriod === '7' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
+              onClick={() => setActiveMainTab('overview')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                activeMainTab === 'overview'
+                  ? 'bg-white text-black shadow-xs font-bold'
+                  : 'text-gray-500 hover:text-black'
               }`}
             >
-              7 jours
+              <TrendingUp size={14} />
+              <span>Vue d'Ensemble</span>
             </button>
             <button
-              onClick={() => setSelectedPeriod('30')}
-              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
-                selectedPeriod === '30' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
+              onClick={() => setActiveMainTab('journal')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                activeMainTab === 'journal'
+                  ? 'bg-white text-black shadow-xs font-bold'
+                  : 'text-gray-500 hover:text-black'
               }`}
             >
-              30 jours
-            </button>
-            <button
-              onClick={() => setSelectedPeriod('90')}
-              className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
-                selectedPeriod === '90' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              3 mois
+              <FileText size={14} />
+              <span>Journal des Ventes</span>
             </button>
           </div>
+
+          {/* Segmented Period Control (Only active in overview tab) */}
+          {activeMainTab === 'overview' && (
+            <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold flex-1 sm:flex-initial justify-between sm:justify-start">
+              <button
+                onClick={() => setSelectedPeriod('7')}
+                className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                  selectedPeriod === '7' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                7 jours
+              </button>
+              <button
+                onClick={() => setSelectedPeriod('30')}
+                className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                  selectedPeriod === '30' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                30 jours
+              </button>
+              <button
+                onClick={() => setSelectedPeriod('90')}
+                className={`flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-lg transition text-center min-h-[36px] sm:min-h-0 ${
+                  selectedPeriod === '90' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                3 mois
+              </button>
+            </div>
+          )}
 
           <button
             onClick={fetchAnalytics}
@@ -135,8 +166,13 @@ export default function ReportsAnalyticsPage() {
 
       {/* Main Body */}
       <main className="flex-1 p-3.5 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
-        {/* KPI Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Render Detailed Sales Journal View */}
+        {activeMainTab === 'journal' ? (
+          <DetailedSalesJournal onRefreshParent={fetchAnalytics} />
+        ) : (
+          <>
+            {/* KPI Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Revenue */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
@@ -440,6 +476,8 @@ export default function ReportsAnalyticsPage() {
             </table>
           </div>
         </div>
+          </>
+        )}
       </main>
     </div>
   );

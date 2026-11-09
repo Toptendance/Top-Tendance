@@ -7,6 +7,9 @@ import PaymentDrawer from '@/components/pos/PaymentDrawer';
 import ProductSearchDrawer from '@/components/pos/ProductSearchDrawer';
 import ReceiptModal from '@/components/pos/ReceiptModal';
 import MobileScannerModal from '@/components/pos/MobileScannerModal';
+import DailySalesSummary, { DailySalesData } from '@/components/pos/DailySalesSummary';
+import ZReportModal from '@/components/pos/ZReportModal';
+import ReturnExchangeModal from '@/components/pos/ReturnExchangeModal';
 import {
   Barcode,
   Search,
@@ -18,7 +21,8 @@ import {
   User,
   ShoppingBag,
   AlertCircle,
-  Camera
+  Camera,
+  RotateCcw
 } from 'lucide-react';
 
 interface CartItem {
@@ -48,11 +52,37 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartError, setCartError] = useState<string | null>(null);
 
+  // In-memory fast cache for instant barcode/SKU lookup (< 5ms)
+  const variantsCacheRef = useRef<Map<string, {
+    id: string;
+    sku: string;
+    barcode: string | null;
+    size: string | null;
+    color: string | null;
+    selling_price: number;
+    stock_quantity: number;
+    name: string;
+  }>>(new Map());
+  const [isPreloadingCache, setIsPreloadingCache] = useState(false);
+
   // Drawers and Modals
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isZReportOpen, setIsZReportOpen] = useState(false);
+  const [isReturnOpen, setIsReturnOpen] = useState(false);
+  const [returnInitialSaleId, setReturnInitialSaleId] = useState<string | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<any>(null);
+
+  // Daily Sales Summary state
+  const [dailySales, setDailySales] = useState<DailySalesData>({
+    grossTotal: 0,
+    salesCount: 0,
+    cashTotal: 0,
+    cardTotal: 0,
+    splitTotal: 0,
+  });
+  const [isDailySalesLoading, setIsDailySalesLoading] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const lastScanTimeRef = useRef<number>(0);
@@ -92,6 +122,143 @@ export default function PosPage() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Pre-fetch active variants into in-memory cache on login for instantaneous scanner resolution (<5ms)
+  useEffect(() => {
+    if (!currentUser) {
+      variantsCacheRef.current.clear();
+      return;
+    }
+
+    let isMounted = true;
+    async function loadVariantCache() {
+      setIsPreloadingCache(true);
+      try {
+        const { data, error } = await supabase
+          .from('variants')
+          .select(`
+            id,
+            sku,
+            barcode,
+            size,
+            color,
+            selling_price,
+            stock_quantity,
+            is_active,
+            product:products (name)
+          `)
+          .eq('is_active', true);
+
+        if (!error && data && isMounted) {
+          const cache = variantsCacheRef.current;
+          cache.clear();
+          for (const item of data) {
+            const prodName = Array.isArray(item.product)
+              ? item.product[0]?.name
+              : (item.product as any)?.name || item.sku;
+            const mapped = {
+              id: item.id,
+              sku: item.sku,
+              barcode: item.barcode,
+              size: item.size,
+              color: item.color,
+              selling_price: Number(item.selling_price),
+              stock_quantity: item.stock_quantity,
+              name: prodName,
+            };
+            if (item.barcode) {
+              cache.set(item.barcode.trim(), mapped);
+            }
+            if (item.sku) {
+              cache.set(item.sku.trim(), mapped);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to pre-cache variants:', err);
+      } finally {
+        if (isMounted) setIsPreloadingCache(false);
+      }
+    }
+
+    loadVariantCache();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
+
+  // Fetch today's sales summary (since 00:00:00 local day)
+  const fetchDailySales = useCallback(async () => {
+    if (!currentUser) return;
+    setIsDailySalesLoading(true);
+    try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { data, error } = await supabase
+        .from('sales')
+        .select('id, final_amount, payment_method, created_at')
+        .gte('created_at', todayStart.toISOString());
+
+      if (!error && data) {
+        let gross = 0;
+        let cash = 0;
+        let card = 0;
+        let split = 0;
+
+        for (const s of data) {
+          const amt = Number(s.final_amount) || 0;
+          gross += amt;
+          if (s.payment_method === 'cash') cash += amt;
+          else if (s.payment_method === 'card') card += amt;
+          else if (s.payment_method === 'split') split += amt;
+        }
+
+        setDailySales({
+          grossTotal: gross,
+          salesCount: data.length,
+          cashTotal: cash,
+          cardTotal: card,
+          splitTotal: split,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch daily sales summary:', err);
+    } finally {
+      setIsDailySalesLoading(false);
+    }
+  }, [currentUser]);
+
+  // Load daily sales on mount & listen to Supabase realtime changes on sales table
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchDailySales();
+
+    const channel = supabase
+      .channel('pos-sales-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sales' },
+        (payload) => {
+          const newSale = payload.new as any;
+          if (newSale && newSale.final_amount) {
+            const amt = Number(newSale.final_amount) || 0;
+            setDailySales((prev) => ({
+              grossTotal: prev.grossTotal + amt,
+              salesCount: prev.salesCount + 1,
+              cashTotal: newSale.payment_method === 'cash' ? prev.cashTotal + amt : prev.cashTotal,
+              cardTotal: newSale.payment_method === 'card' ? prev.cardTotal + amt : prev.cardTotal,
+              splitTotal: newSale.payment_method === 'split' ? prev.splitTotal + amt : prev.splitTotal,
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser, fetchDailySales]);
 
   // Persistent focus on scanner input
   useEffect(() => {
@@ -210,6 +377,22 @@ export default function PosPage() {
 
     setCartError(null);
 
+    // 1. Instant Cache Check (< 5ms physical response)
+    const cachedItem = variantsCacheRef.current.get(barcode);
+    if (cachedItem) {
+      addVariantToCart({
+        id: cachedItem.id,
+        sku: cachedItem.sku,
+        name: cachedItem.name,
+        size: cachedItem.size,
+        color: cachedItem.color,
+        selling_price: cachedItem.selling_price,
+        stock_quantity: cachedItem.stock_quantity,
+      });
+      return;
+    }
+
+    // 2. Fallback to Supabase Database if not in local cache yet
     try {
       const { data, error } = await supabase
         .from('variants')
@@ -257,7 +440,7 @@ export default function PosPage() {
           ? skuData.product[0]?.name
           : (skuData.product as any)?.name || skuData.sku;
 
-        addVariantToCart({
+        const mappedSku = {
           id: skuData.id,
           sku: skuData.sku,
           name: prodName,
@@ -265,7 +448,15 @@ export default function PosPage() {
           color: skuData.color,
           selling_price: Number(skuData.selling_price),
           stock_quantity: skuData.stock_quantity,
-        });
+        };
+
+        // Cache for subsequent instant scans
+        variantsCacheRef.current.set(skuData.sku.trim(), { ...mappedSku, barcode: skuData.barcode });
+        if (skuData.barcode) {
+          variantsCacheRef.current.set(skuData.barcode.trim(), { ...mappedSku, barcode: skuData.barcode });
+        }
+
+        addVariantToCart(mappedSku);
         return;
       }
 
@@ -273,7 +464,7 @@ export default function PosPage() {
         ? data.product[0]?.name
         : (data.product as any)?.name || data.sku;
 
-      addVariantToCart({
+      const mappedData = {
         id: data.id,
         sku: data.sku,
         name: prodName,
@@ -281,7 +472,15 @@ export default function PosPage() {
         color: data.color,
         selling_price: Number(data.selling_price),
         stock_quantity: data.stock_quantity,
-      });
+      };
+
+      // Cache for subsequent instant scans
+      variantsCacheRef.current.set(data.sku.trim(), { ...mappedData, barcode: data.barcode });
+      if (data.barcode) {
+        variantsCacheRef.current.set(data.barcode.trim(), { ...mappedData, barcode: data.barcode });
+      }
+
+      addVariantToCart(mappedData);
     } catch (err: any) {
       setCartError(err.message || 'Erreur lors du scan');
       playBeep('error');
@@ -368,6 +567,30 @@ export default function PosPage() {
       cash_tendered: cashTendered,
       change_due: changeDue,
     });
+
+    // Optimistically update daily sales summary immediately in state
+    if (data && data.final_amount) {
+      const saleAmt = Number(data.final_amount) || 0;
+      setDailySales((prev) => ({
+        grossTotal: prev.grossTotal + saleAmt,
+        salesCount: prev.salesCount + 1,
+        cashTotal: paymentMethod === 'cash' ? prev.cashTotal + saleAmt : prev.cashTotal,
+        cardTotal: paymentMethod === 'card' ? prev.cardTotal + saleAmt : prev.cardTotal,
+        splitTotal: paymentMethod === 'split' ? prev.splitTotal + saleAmt : prev.splitTotal,
+      }));
+    }
+
+    // Update in-memory cache stock levels to stay in sync
+    for (const item of pItems) {
+      for (const [key, cached] of variantsCacheRef.current.entries()) {
+        if (cached.id === item.variant_id) {
+          variantsCacheRef.current.set(key, {
+            ...cached,
+            stock_quantity: Math.max(0, cached.stock_quantity - item.quantity),
+          });
+        }
+      }
+    }
   };
 
   // Auth loading view
@@ -483,6 +706,15 @@ export default function PosPage() {
                 <Barcode size={16} /> Scanner Code-barres <span className="hidden sm:inline">(F2)</span>
               </label>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsReturnOpen(true)}
+                  className="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0 flex items-center gap-1.5"
+                  title="Gérer un retour d'article ou échange taille/couleur"
+                >
+                  <RotateCcw size={15} />
+                  <span>Retour / Échange</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsCameraOpen(true)}
@@ -679,6 +911,46 @@ export default function PosPage() {
       <ReceiptModal
         receipt={completedReceipt}
         onClose={() => setCompletedReceipt(null)}
+      />
+
+      {/* Live Daily Sales Summary Bar */}
+      <DailySalesSummary
+        stats={dailySales}
+        onRefresh={fetchDailySales}
+        isLoading={isDailySalesLoading}
+        onOpenZReport={() => setIsZReportOpen(true)}
+        userRole={userProfile?.role}
+        onReprintReceipt={(receiptData) => {
+          setCompletedReceipt(receiptData);
+        }}
+        onInitiateReturn={(saleId) => {
+          setReturnInitialSaleId(saleId);
+          setIsReturnOpen(true);
+        }}
+      />
+
+      {/* End-of-Day Z-Report Modal */}
+      <ZReportModal
+        isOpen={isZReportOpen}
+        onClose={() => setIsZReportOpen(false)}
+        stats={dailySales}
+        cashierName={userProfile?.full_name || currentUser.email}
+        cashierRole={userProfile?.role || 'cashier'}
+      />
+
+      {/* Return & Exchange Modal */}
+      <ReturnExchangeModal
+        isOpen={isReturnOpen}
+        initialSaleId={returnInitialSaleId}
+        onClose={() => {
+          setIsReturnOpen(false);
+          setReturnInitialSaleId(null);
+          fetchDailySales();
+        }}
+        onApplyExchangeCredit={(creditAmount) => {
+          // Play success chime and trigger a daily sales sync
+          fetchDailySales();
+        }}
       />
     </div>
   );

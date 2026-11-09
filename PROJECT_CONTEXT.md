@@ -48,15 +48,17 @@ The system supports **3 distinct user roles** managed via the `profiles` table i
 4. `variants`: `id (uuid PK)`, `product_id (FK)`, `sku (unique)`, `barcode (unique)`, `size`, `color`, `selling_price (numeric 12,3)`, `stock_quantity (int)`, `low_stock_threshold (int)`, `is_active (bool default true)`
 5. `variant_costs`: `variant_id (FK PK)`, `cost_price (numeric 12,3)` *(Isolated from Cashiers via RLS)*
 6. `sales`: `id (uuid PK)`, `cashier_id (FK)`, `customer_id (FK null)`, `customer_phone`, `total_amount`, `payment_method ('cash'|'card'|'split')`, `discount_amount`, `created_at`
-7. `sale_items`: `id (uuid PK)`, `sale_id (FK)`, `variant_id (FK)`, `quantity`, `unit_price`, `subtotal`
+7. `sale_items`: `id (uuid PK)`, `sale_id (FK)`, `variant_id (FK)`, `quantity`, `unit_price`, `subtotal` *(no `created_at` column)*
 8. `stock_movements`: `id (uuid PK)`, `variant_id (FK)`, `quantity_change`, `movement_type ('sale'|'receiving'|'return'|'adjustment')`, `reference_id`, `created_by`
-9. `customer_addresses`: `id (uuid PK)`, `user_id (FK)`, `label`, `recipient_name`, `phone`, `city`, `governorate`, `postal_code`, `is_default`
-10. `customer_wishlists`: `id (uuid PK)`, `user_id (FK)`, `variant_id (FK)`, `created_at`
+9. `returns`: `id (uuid PK)`, `original_sale_id (FK→sales)`, `cashier_id (FK→profiles)`, `return_type ('refund'|'exchange')`, `total_refunded_amount (numeric 12,3)`, `refund_payment_method ('cash'|'card'|'store_credit')`, `reason`, `created_at` *(Added 2026-11-09)*
+10. `return_items`: `id (uuid PK)`, `return_id (FK→returns CASCADE)`, `sale_item_id (FK→sale_items SET NULL)`, `variant_id (FK→variants)`, `quantity`, `unit_price`, `subtotal` *(Added 2026-11-09)*
+11. `customer_addresses`: `id (uuid PK)`, `user_id (FK)`, `label`, `recipient_name`, `phone`, `city`, `governorate`, `postal_code`, `is_default`
+12. `customer_wishlists`: `id (uuid PK)`, `user_id (FK)`, `variant_id (FK)`, `created_at`
 
 ### RPC Functions (`SECURITY DEFINER`)
 - `complete_sale(p_items jsonb, p_payment_method text, p_discount numeric)`: Atomically validates stock, inserts sale record + sale items, decrements stock quantities, logs stock movements.
 - `receive_stock(p_items jsonb, p_supplier_name text, p_invoice_number text)`: Increases variant stock and logs receiving movements.
-- `process_return(p_sale_item_id uuid, p_quantity int, p_refund_method text)`: Restores inventory and records refund.
+- `process_return_exchange(p_original_sale_id uuid, p_returned_items jsonb, p_return_type text, p_refund_method text, p_reason text)`: Atomically records a return or exchange, restores stock, logs stock movements. Returns JSONB with return_id and totals. *(Applied via `supabase_step8_returns.sql` on 2026-11-09)*
 - `get_sales_analytics(p_start_date date, p_end_date date)`: Generates manager revenue and profit reports.
 - `get_stock_valuation()`: Calculates total inventory value at cost price vs selling price.
 
@@ -84,6 +86,7 @@ src/
 │   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
 │   │   ├── PaymentDrawer.tsx   ← Cash / Card payment drawer with change calculator
 │   │   ├── ProductSearchDrawer.tsx ← Manual variant & SKU search modal
+│   │   ├── ReturnExchangeModal.tsx ← Return & Exchange modal: universal barcode/UUID search, already-returned qty tracking, calls process_return_exchange RPC
 │   │   └── ReceiptModal.tsx    ← Post-sale ticket modal with printable receipt
 ├── utils/
 │   ├── supabaseClient.ts       ← createBrowserClient (@supabase/ssr) storing session in cookies
@@ -124,4 +127,13 @@ src/
   - `checklist_auth_fix.md` ✅ (Cookie-based auth synchronization between client and middleware)
   - `checklist_delete_product.md` ✅ (Soft delete with confirmation dialog and RLS policies)
   - `checklist_test_products.md` ✅ (4 Fashion items with Tunisian barcodes, label printing verified)
+  - `checklist_fix_process_return_exchange.md` ✅ — Phase 1 & 2 done (2026-11-09):
+    - Applied `supabase_step8_returns.sql` to live Supabase: created `returns`, `return_items` tables + RLS + `process_return_exchange` RPC
+    - Verified all FKs and `stock_movements` table
+  - `checklist_fix_return_qr_scan.md` ✅ — Phase 1 done (2026-11-09):
+    - Fixed `sale_items` query bug in `ReturnExchangeModal.tsx`: removed non-existent `created_at` column from select/order
+    - Added already-returned quantity tracking: `fetchSaleById` now fetches `return_items` for the sale, `alreadyReturnedQtys` state drives max-returnable cap per item, barcode search filters out fully-returned sales from the picker
+- **Known issues / caveats**:
+  - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
+  - `returns` / `return_items` tables added 2026-11-09 (not in original schema)
 - **Build**: Passes cleanly with 35 SSG routes and Middleware (`npm run build` exits 0).

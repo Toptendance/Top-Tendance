@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import JsBarcode from 'jsbarcode';
 import { Printer, X } from 'lucide-react';
 
 interface ReceiptModalProps {
@@ -26,6 +27,28 @@ interface ReceiptModalProps {
 }
 
 export default function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
+  const barcodeRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (receipt && barcodeRef.current) {
+      try {
+        // Render scannable Code128 barcode for the ticket ID (prefix or full ID)
+        JsBarcode(barcodeRef.current, receipt.sale_id, {
+          format: 'CODE128',
+          width: 1.4,
+          height: 38,
+          displayValue: true,
+          fontSize: 10,
+          font: 'monospace',
+          text: `TICKET: ${receipt.sale_id.slice(0, 8).toUpperCase()}`,
+          margin: 4,
+        });
+      } catch (err) {
+        console.error('Error generating receipt barcode:', err);
+      }
+    }
+  }, [receipt]);
+
   if (!receipt) return null;
 
   const handlePrint = () => {
@@ -114,6 +137,9 @@ export default function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
           <div className="text-center mt-6 pt-3 border-t border-dashed border-gray-400 text-[10px] text-gray-500">
             <p>Merci pour votre visite !</p>
             <p>Les échanges sont acceptés sous 7 jours.</p>
+            <div className="mt-3 flex flex-col items-center justify-center">
+              <svg ref={barcodeRef} className="max-w-full h-auto" />
+            </div>
           </div>
         </div>
 
