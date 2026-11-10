@@ -544,11 +544,24 @@ export default function PosPage() {
     cashTendered?: number;
     changeDue?: number;
   }) => {
-    // Only pass {variant_id, quantity} to RPC
-    const pItems = cart.map((item) => ({
-      variant_id: item.variant_id,
-      quantity: item.quantity,
-    }));
+    // Calculate raw cart total
+    const rawTotal = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+
+    // Pass variant_id, quantity, and proportional effective unit_price to RPC
+    const pItems = cart.map((item) => {
+      const itemSubtotal = item.unit_price * item.quantity;
+      const proportion = rawTotal > 0 ? itemSubtotal / rawTotal : 1;
+      const itemDiscount = discount * proportion;
+      const effectiveUnitPrice = rawTotal > 0 && item.quantity > 0
+        ? (itemSubtotal - itemDiscount) / item.quantity
+        : item.unit_price;
+
+      return {
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        unit_price: Math.max(0, Math.round(effectiveUnitPrice * 1000) / 1000),
+      };
+    });
 
     const { data, error } = await supabase.rpc('complete_sale', {
       p_items: pItems,
@@ -946,6 +959,19 @@ export default function PosPage() {
           setIsReturnOpen(false);
           setReturnInitialSaleId(null);
           fetchDailySales();
+        }}
+        onReturnCompleted={(returnedItems) => {
+          // Increment stock in the in-memory cache for each returned variant
+          for (const item of returnedItems) {
+            for (const [key, cached] of variantsCacheRef.current.entries()) {
+              if (cached.id === item.variant_id) {
+                variantsCacheRef.current.set(key, {
+                  ...cached,
+                  stock_quantity: cached.stock_quantity + item.quantity,
+                });
+              }
+            }
+          }
         }}
         onApplyExchangeCredit={(creditAmount) => {
           // Play success chime and trigger a daily sales sync

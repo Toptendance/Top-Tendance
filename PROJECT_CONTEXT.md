@@ -15,7 +15,7 @@
 | **Client / SSR** | `@supabase/ssr` (`createBrowserClient`) | Cookie-based session sharing between client & middleware |
 | **Middleware** | `src/middleware.ts` (`@supabase/ssr`) | Protects `/account`, `/pos`, `/inventory`, `/reports` |
 | **Icons & Audio** | `lucide-react`, Web Audio API (`posAudio.ts`) | Barcode scanner sounds (success / error beeps) |
-| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | Thermal print: 50mm × 30mm sticker tags |
+| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2410 calibration |
 | **Currency** | Tunisian Dinar (`TND` / `DT`) | All financial DB columns: `numeric(12,3)` |
 | **Production Domain** | `https://toptendance.tn` | Supabase Site URL & Redirect URLs configured |
 
@@ -45,7 +45,7 @@ The system supports **3 distinct user roles** managed via the `profiles` table i
 1. `profiles`: `id (uuid PK)`, `role (text: 'manager'|'cashier'|'customer')`, `full_name`, `phone`
 2. `categories`: `id (uuid PK)`, `name (text)`, `description (text)`
 3. `products`: `id (uuid PK)`, `name`, `brand`, `category_id (FK)`, `is_active (bool default true)`
-4. `variants`: `id (uuid PK)`, `product_id (FK)`, `sku (unique)`, `barcode (unique)`, `size`, `color`, `selling_price (numeric 12,3)`, `stock_quantity (int)`, `low_stock_threshold (int)`, `is_active (bool default true)`
+4. `variants`: `id (uuid PK)`, `product_id (FK)`, `sku (unique)`, `barcode (unique)`, `size`, `color`, `selling_price (numeric 12,3)`, `stock_quantity (int)`, `low_stock_threshold (int)`, `is_active (bool default true)`, `is_printed (bool default false)`, `last_printed_at (timestamptz default null)` *(Updated 2026-11-10)*
 5. `variant_costs`: `variant_id (FK PK)`, `cost_price (numeric 12,3)` *(Isolated from Cashiers via RLS)*
 6. `sales`: `id (uuid PK)`, `cashier_id (FK)`, `customer_id (FK null)`, `customer_phone`, `total_amount`, `payment_method ('cash'|'card'|'split')`, `discount_amount`, `created_at`
 7. `sale_items`: `id (uuid PK)`, `sale_id (FK)`, `variant_id (FK)`, `quantity`, `unit_price`, `subtotal` *(no `created_at` column)*
@@ -82,7 +82,7 @@ src/
 │   │   ├── MobileMenu.tsx      ← Mobile drawer with discrete staff access
 │   │   └── Footer.tsx          ← Footer with discrete staff login link
 │   ├── pos/
-│   │   ├── BarcodeTagModal.tsx ← Thermal sticker printing (50mm × 30mm) via Code-128 SVG
+│   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2410 offset calibration, dynamic multi-page layout, and auto "mark as printed" tracking
 │   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
 │   │   ├── PaymentDrawer.tsx   ← Cash / Card payment drawer with change calculator
 │   │   ├── ProductSearchDrawer.tsx ← Manual variant & SKU search modal
@@ -133,6 +133,11 @@ src/
   - `checklist_fix_return_qr_scan.md` ✅ — Phase 1 done (2026-11-09):
     - Fixed `sale_items` query bug in `ReturnExchangeModal.tsx`: removed non-existent `created_at` column from select/order
     - Added already-returned quantity tracking: `fetchSaleById` now fetches `return_items` for the sale, `alreadyReturnedQtys` state drives max-returnable cap per item, barcode search filters out fully-returned sales from the picker
+  - `checklist_multi_item_barcode_print.md` ✅ — Sections A, B, C & D done (2026-11-10):
+    - **Multi-Selection UI**: Select All + row-level checkboxes on desktop & mobile with floating batch action toolbar.
+    - **Multi-Item Modal (`BarcodeTagModal.tsx`)**: Item breakdown, per-item quantity steppers, global quantity presets, total labels / pages indicator, click-to-pick start position (1–40), and visual sheet color-coded mapping.
+    - **Strict A4 Print Layout Engine**: Sequential pagination across 40-cell sheets (4 × 10), pre-skip and trailing empty cell padding, CSS print margins and vector Code-128 SVG barcodes.
+    - **Mark as Printed Tracking**: `is_printed` & `last_printed_at` columns on `variants`, automatic update upon printing, manual toggle badge (`✓ Imprimé` / `Non imprimé`), status filter (`Tous | Non imprimés | Déjà imprimés`), and "Sélectionner non imprimés" button.
 - **Known issues / caveats**:
   - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
   - `returns` / `return_items` tables added 2026-11-09 (not in original schema)

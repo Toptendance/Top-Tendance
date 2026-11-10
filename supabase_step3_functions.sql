@@ -67,7 +67,8 @@ BEGIN
     FOR v_item IN
         SELECT 
             (item->>'variant_id')::UUID AS variant_id,
-            (item->>'quantity')::INT AS quantity
+            (item->>'quantity')::INT AS quantity,
+            (item->>'unit_price')::NUMERIC(12, 3) AS unit_price
         FROM jsonb_array_elements(p_items) AS item
     LOOP
         IF v_item.quantity <= 0 THEN
@@ -92,15 +93,24 @@ BEGIN
                 v_variant.sku, v_item.quantity, v_variant.stock_quantity;
         END IF;
 
-        -- Subtotal calculation
-        v_total_amount := v_total_amount + (v_variant.selling_price * v_item.quantity);
+        -- Subtotal calculation: if effective unit_price is provided, use catalog price for gross total or effective price
+        v_total_amount := v_total_amount + (COALESCE(v_item.unit_price, v_variant.selling_price) * v_item.quantity);
     END LOOP;
 
     -- Calculate final amount
-    IF v_discount > v_total_amount THEN
+    IF v_discount > 0 AND v_discount > v_total_amount THEN
         RAISE EXCEPTION 'Discount amount (%) exceeds total amount (%)', v_discount, v_total_amount;
     END IF;
-    v_final_amount := v_total_amount - v_discount;
+    -- If items already arrived with discounted unit_price, final_amount matches the sum of effective item totals
+    IF v_total_amount - v_discount < 0 THEN
+        v_final_amount := 0.000;
+    ELSIF p_discount > 0 AND (SELECT bool_and((item->>'unit_price') IS NOT NULL) FROM jsonb_array_elements(p_items) AS item) THEN
+        -- Effective prices already have the discount distributed into them
+        v_final_amount := v_total_amount;
+        v_total_amount := v_final_amount + v_discount;
+    ELSE
+        v_final_amount := v_total_amount - v_discount;
+    END IF;
 
     -- 4. Insert into sales
     INSERT INTO public.sales (
@@ -123,7 +133,8 @@ BEGIN
     FOR v_item IN
         SELECT 
             (item->>'variant_id')::UUID AS variant_id,
-            (item->>'quantity')::INT AS quantity
+            (item->>'quantity')::INT AS quantity,
+            (item->>'unit_price')::NUMERIC(12, 3) AS unit_price
         FROM jsonb_array_elements(p_items) AS item
     LOOP
         SELECT id, selling_price, sku INTO v_variant
@@ -139,7 +150,7 @@ BEGIN
             v_cost_price := 0.000;
         END IF;
 
-        -- Insert into sale_items
+        -- Insert into sale_items with effective unit_price
         INSERT INTO public.sale_items (
             sale_id,
             variant_id,
@@ -152,9 +163,9 @@ BEGIN
             v_sale_id,
             v_item.variant_id,
             v_item.quantity,
-            v_variant.selling_price,
+            COALESCE(v_item.unit_price, v_variant.selling_price),
             v_cost_price,
-            v_variant.selling_price * v_item.quantity
+            COALESCE(v_item.unit_price, v_variant.selling_price) * v_item.quantity
         );
 
         -- Decrement stock quantity
@@ -183,8 +194,8 @@ BEGIN
             'variant_id', v_item.variant_id,
             'sku', v_variant.sku,
             'quantity', v_item.quantity,
-            'unit_price', v_variant.selling_price,
-            'subtotal', v_variant.selling_price * v_item.quantity
+            'unit_price', COALESCE(v_item.unit_price, v_variant.selling_price),
+            'subtotal', COALESCE(v_item.unit_price, v_variant.selling_price) * v_item.quantity
         );
     END LOOP;
 

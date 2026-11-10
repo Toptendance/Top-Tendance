@@ -28,6 +28,7 @@ interface ReturnExchangeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyExchangeCredit?: (creditAmount: number, details: any) => void;
+  onReturnCompleted?: (returnedItems: Array<{ variant_id: string; quantity: number }>) => void;
   initialSaleId?: string | null;
 }
 
@@ -35,6 +36,7 @@ export default function ReturnExchangeModal({
   isOpen,
   onClose,
   onApplyExchangeCredit,
+  onReturnCompleted,
   initialSaleId,
 }: ReturnExchangeModalProps) {
   const [receiptQuery, setReceiptQuery] = useState(initialSaleId || '');
@@ -392,6 +394,16 @@ export default function ReturnExchangeModal({
       playBeep('success');
       setSuccessResult(data || { total_refunded_amount: totalReturnAmount });
 
+      // Notify parent to refresh cache stock for returned variants
+      if (onReturnCompleted) {
+        onReturnCompleted(
+          itemsToReturnList.map((i: any) => ({
+            variant_id: i.variant_id,
+            quantity: i.quantity,
+          }))
+        );
+      }
+
       // If exchange, pass credit amount to cart
       if (returnType === 'exchange' && onApplyExchangeCredit) {
         onApplyExchangeCredit(totalReturnAmount, {
@@ -603,6 +615,21 @@ export default function ReturnExchangeModal({
                   </span>
                 </div>
               </div>
+
+              {/* Legacy discount notice if applicable */}
+              {Number(saleData.discount_amount || 0) > 0 &&
+                saleData.sale_items?.length > 0 &&
+                Math.abs(
+                  saleData.sale_items.reduce((acc: number, si: any) => acc + Number(si.unit_price) * si.quantity, 0) -
+                    Number(saleData.final_amount)
+                ) > 0.05 && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-[11px] rounded-lg flex items-center gap-2">
+                    <AlertCircle size={14} className="shrink-0 text-amber-600" />
+                    <span>
+                      Ticket avec remise globale ({formatPrice(saleData.discount_amount)}). Les prix affichés ci-dessous proviennent d'une vente antérieure à la répartition automatique par article.
+                    </span>
+                  </div>
+                )}
 
               {/* Items List */}
               <div className="space-y-2">
