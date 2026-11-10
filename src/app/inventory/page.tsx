@@ -23,8 +23,14 @@ import {
   Sparkles,
   FolderTree,
   Check,
-  X
+  X,
+  Layers,
+  Sliders,
+  CheckSquare,
+  Square,
+  Printer
 } from 'lucide-react';
+import { generateUniqueBarcode, generateVariantSku } from '@/utils/barcodeGenerator';
 import Link from 'next/link';
 
 interface ProductWithVariants {
@@ -45,6 +51,8 @@ interface ProductWithVariants {
     low_stock_threshold: number;
     is_active: boolean;
     cost_price?: number;
+    is_printed?: boolean;
+    last_printed_at?: string | null;
   }>;
 }
 
@@ -56,6 +64,25 @@ export default function InventoryDashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
+  const [printFilter, setPrintFilter] = useState<'all' | 'unprinted' | 'printed'>('all');
+
+  // Multi-item selection for batch barcode printing
+  const [selectedVariants, setSelectedVariants] = useState<
+    Map<
+      string,
+      {
+        variantId: string;
+        productName: string;
+        sku: string;
+        barcode: string;
+        size: string | null;
+        color: string | null;
+        selling_price: number;
+        stock_quantity: number;
+        quantity: number;
+      }
+    >
+  >(new Map());
 
   // Modals state
   const [tagModalVariant, setTagModalVariant] = useState<any>(null);
@@ -90,26 +117,77 @@ export default function InventoryDashboardPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSkuDuplicate, setIsSkuDuplicate] = useState(false);
 
+  // Multi-size batch state
+  const [isMultiSize, setIsMultiSize] = useState(false);
+  const [shoeStart, setShoeStart] = useState(36);
+  const [shoeEnd, setShoeEnd] = useState(40);
+  const [customSizesInput, setCustomSizesInput] = useState('');
+  interface VariantDraft {
+    size: string;
+    sku: string;
+    barcode: string;
+    stock: number;
+    selling_price: string;
+    cost_price: string;
+  }
+  const [batchVariants, setBatchVariants] = useState<VariantDraft[]>([]);
+
+  // Collect existing barcodes in memory to prevent client-side collisions
+  const getKnownBarcodes = (): Set<string> => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      p.variants.forEach((v) => {
+        if (v.barcode) set.add(v.barcode);
+      });
+    });
+    return set;
+  };
+
+  // Helper to recompute multi-size draft table
+  const applySizeListToBatch = (sizes: string[]) => {
+    const known = getKnownBarcodes();
+    const drafts: VariantDraft[] = sizes.map((sz) => {
+      const generatedBarcode = generateUniqueBarcode(known);
+      known.add(generatedBarcode);
+      return {
+        size: sz,
+        sku: generateVariantSku(productForm.name || 'PROD', sz, productForm.color || 'STD'),
+        barcode: generatedBarcode,
+        stock: parseInt(productForm.stock_quantity) || 10,
+        selling_price: productForm.selling_price || '79.000',
+        cost_price: productForm.cost_price || '35.000',
+      };
+    });
+    setBatchVariants(drafts);
+  };
+
+  const handleApplyShoeRange = (start: number, end: number) => {
+    const list: string[] = [];
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    for (let i = min; i <= max; i++) {
+      list.push(i.toString());
+    }
+    applySizeListToBatch(list);
+  };
+
+  const handleApplyClothingPreset = () => {
+    applySizeListToBatch(['XS', 'S', 'M', 'L', 'XL', 'XXL']);
+  };
+
+  const handleApplyCustomSizes = () => {
+    const cleaned = customSizesInput
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (cleaned.length > 0) {
+      applySizeListToBatch(cleaned);
+    }
+  };
+
   // Helper: Generate structured SKU from product name, size, and color
   const generateSku = (name: string, size: string, color: string): string => {
-    const cleanStr = (str: string) =>
-      str
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, ' ')
-        .trim();
-
-    const nameParts = cleanStr(name)
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((word) => (word.length <= 4 ? word : word.slice(0, 4)));
-
-    const baseName = nameParts.length > 0 ? nameParts.join('-') : 'PROD';
-    const cleanSize = cleanStr(size) || 'U';
-    const cleanColor = cleanStr(color) || 'STD';
-
-    return `${baseName}-${cleanSize}-${cleanColor}`;
+    return generateVariantSku(name, size, color);
   };
 
   const handleAutoGenerateSku = () => {
@@ -147,7 +225,9 @@ export default function InventoryDashboardPage() {
             selling_price,
             stock_quantity,
             low_stock_threshold,
-            is_active
+            is_active,
+            is_printed,
+            last_printed_at
           )
         `)
         .eq('is_active', true)
@@ -207,15 +287,186 @@ export default function InventoryDashboardPage() {
       return true;
     })
     .map((p) => {
+      let vars = p.variants;
       if (filterLowStockOnly) {
-        return {
-          ...p,
-          variants: p.variants.filter((v) => v.stock_quantity <= v.low_stock_threshold),
-        };
+        vars = vars.filter((v) => v.stock_quantity <= v.low_stock_threshold);
       }
-      return p;
+      if (printFilter === 'unprinted') {
+        vars = vars.filter((v) => !v.is_printed);
+      } else if (printFilter === 'printed') {
+        vars = vars.filter((v) => Boolean(v.is_printed));
+      }
+      return {
+        ...p,
+        variants: vars,
+      };
     })
     .filter((p) => p.variants.length > 0);
+
+  // All visible variants currently displayed in table that have barcodes
+  const visiblePrintableVariants = filteredProducts.flatMap((p) =>
+    p.variants
+      .filter((v) => Boolean(v.barcode))
+      .map((v) => ({
+        variantId: v.id,
+        productName: p.name,
+        sku: v.sku,
+        barcode: v.barcode!,
+        size: v.size,
+        color: v.color,
+        selling_price: v.selling_price,
+        stock_quantity: v.stock_quantity,
+        quantity: Math.max(1, v.stock_quantity),
+      }))
+  );
+
+  const areAllVisibleSelected =
+    visiblePrintableVariants.length > 0 &&
+    visiblePrintableVariants.every((v) => selectedVariants.has(v.variantId));
+
+  const toggleSelectAllVisible = () => {
+    if (areAllVisibleSelected) {
+      // Unselect all visible
+      setSelectedVariants((prev) => {
+        const next = new Map(prev);
+        visiblePrintableVariants.forEach((v) => next.delete(v.variantId));
+        return next;
+      });
+    } else {
+      // Select all visible
+      setSelectedVariants((prev) => {
+        const next = new Map(prev);
+        visiblePrintableVariants.forEach((v) => {
+          if (!next.has(v.variantId)) {
+            next.set(v.variantId, v);
+          }
+        });
+        return next;
+      });
+    }
+  };
+
+  const toggleSelectVariant = (item: {
+    variantId: string;
+    productName: string;
+    sku: string;
+    barcode: string;
+    size: string | null;
+    color: string | null;
+    selling_price: number;
+    stock_quantity: number;
+  }) => {
+    setSelectedVariants((prev) => {
+      const next = new Map(prev);
+      if (next.has(item.variantId)) {
+        next.delete(item.variantId);
+      } else {
+        next.set(item.variantId, {
+          ...item,
+          quantity: Math.max(1, item.stock_quantity),
+        });
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedVariants(new Map());
+  };
+
+  // Select all unprinted items across visible filtered inventory
+  const handleSelectAllUnprinted = () => {
+    const unprinted = visiblePrintableVariants.filter((v) => {
+      // Find original variant from products to get is_printed status
+      for (const p of products) {
+        const found = p.variants.find((vr) => vr.id === v.variantId);
+        if (found) return !found.is_printed;
+      }
+      return true;
+    });
+
+    if (unprinted.length === 0) {
+      showToast('Aucun article non imprimé trouvé', 'info');
+      return;
+    }
+
+    setSelectedVariants((prev) => {
+      const next = new Map(prev);
+      unprinted.forEach((item) => {
+        next.set(item.variantId, item);
+      });
+      return next;
+    });
+    showToast(`${unprinted.length} article(s) non imprimé(s) sélectionné(s)`, 'success');
+  };
+
+  // Toggle or set printed status for variant(s)
+  const handleTogglePrintedStatus = async (variantId: string, currentStatus?: boolean) => {
+    const newStatus = !currentStatus;
+    const nowIso = newStatus ? new Date().toISOString() : null;
+
+    // Optimistic update
+    setProducts((prev) =>
+      prev.map((p) => ({
+        ...p,
+        variants: p.variants.map((v) =>
+          v.id === variantId
+            ? { ...v, is_printed: newStatus, last_printed_at: nowIso }
+            : v
+        ),
+      }))
+    );
+
+    try {
+      const { error } = await supabase
+        .from('variants')
+        .update({
+          is_printed: newStatus,
+          last_printed_at: nowIso,
+        })
+        .eq('id', variantId);
+
+      if (error) throw error;
+      showToast(newStatus ? 'Marqué comme imprimé' : 'Marqué comme non imprimé', 'info');
+    } catch (err: any) {
+      console.error('Failed to update printed status:', err);
+      showToast('Erreur mise à jour statut impression', 'error');
+      fetchInventory();
+    }
+  };
+
+  // Callback after printing from BarcodeTagModal
+  const handleVariantsPrinted = async (variantIds: string[]) => {
+    if (!variantIds || variantIds.length === 0) return;
+    const nowIso = new Date().toISOString();
+
+    // Optimistic update
+    setProducts((prev) =>
+      prev.map((p) => ({
+        ...p,
+        variants: p.variants.map((v) =>
+          variantIds.includes(v.id)
+            ? { ...v, is_printed: true, last_printed_at: nowIso }
+            : v
+        ),
+      }))
+    );
+
+    try {
+      const { error } = await supabase
+        .from('variants')
+        .update({
+          is_printed: true,
+          last_printed_at: nowIso,
+        })
+        .in('id', variantIds);
+
+      if (error) throw error;
+      showToast(`${variantIds.length} article(s) marqué(s) comme imprimé(s)`, 'success');
+    } catch (err: any) {
+      console.error('Failed to mark variants as printed:', err);
+    }
+  };
 
   // Handle Create Product & Variant
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -223,6 +474,11 @@ export default function InventoryDashboardPage() {
     setFormError(null);
     setIsSkuDuplicate(false);
     try {
+      if (isMultiSize && batchVariants.length === 0) {
+        setFormError('Veuillez ajouter au moins une taille au lot.');
+        return;
+      }
+
       // 1. Insert product
       const { data: prod, error: pErr } = await supabase
         .from('products')
@@ -236,37 +492,97 @@ export default function InventoryDashboardPage() {
 
       if (pErr) throw pErr;
 
-      // 2. Insert variant
-      const { data: variant, error: vErr } = await supabase
-        .from('variants')
-        .insert({
+      // 2. Prepare variants to insert (single vs batch)
+      if (isMultiSize) {
+        const variantsToInsert = batchVariants.map((item) => ({
           product_id: prod.id,
-          sku: productForm.sku,
-          barcode: productForm.barcode || null,
-          size: productForm.size,
+          sku: item.sku,
+          barcode: item.barcode || null,
+          size: item.size,
           color: productForm.color,
           selling_price: parseFloat(productForm.selling_price),
-          stock_quantity: parseInt(productForm.stock_quantity),
+          stock_quantity: item.stock,
           low_stock_threshold: parseInt(productForm.low_stock_threshold),
-        })
-        .select()
-        .single();
+        }));
 
-      if (vErr) {
-        // If variant insert failed, rollback product to prevent orphaned records
-        await supabase.from('products').delete().eq('id', prod.id);
-        throw vErr;
-      }
+        const { data: insertedVariants, error: vErr } = await supabase
+          .from('variants')
+          .insert(variantsToInsert)
+          .select();
 
-      // 3. Insert cost price into variant_costs
-      if (productForm.cost_price) {
-        await supabase.from('variant_costs').insert({
-          variant_id: variant.id,
-          cost_price: parseFloat(productForm.cost_price),
-        });
+        if (vErr) {
+          await supabase.from('products').delete().eq('id', prod.id);
+          throw vErr;
+        }
+
+        // Insert costs into variant_costs for all variants
+        if (productForm.cost_price && insertedVariants) {
+          const costRows = insertedVariants.map((v) => ({
+            variant_id: v.id,
+            cost_price: parseFloat(productForm.cost_price),
+          }));
+          await supabase.from('variant_costs').insert(costRows);
+        }
+
+        // Log initial receiving movement for variants with stock > 0
+        if (insertedVariants) {
+          const movements = insertedVariants
+            .filter((v) => v.stock_quantity > 0)
+            .map((v) => ({
+              variant_id: v.id,
+              quantity_change: v.stock_quantity,
+              movement_type: 'receiving',
+              reference_id: 'Initial Lot',
+            }));
+          if (movements.length > 0) {
+            await supabase.from('stock_movements').insert(movements);
+          }
+        }
+      } else {
+        // Single Variant insertion
+        const { data: variant, error: vErr } = await supabase
+          .from('variants')
+          .insert({
+            product_id: prod.id,
+            sku: productForm.sku,
+            barcode: productForm.barcode || null,
+            size: productForm.size,
+            color: productForm.color,
+            selling_price: parseFloat(productForm.selling_price),
+            stock_quantity: parseInt(productForm.stock_quantity),
+            low_stock_threshold: parseInt(productForm.low_stock_threshold),
+          })
+          .select()
+          .single();
+
+        if (vErr) {
+          // If variant insert failed, rollback product to prevent orphaned records
+          await supabase.from('products').delete().eq('id', prod.id);
+          throw vErr;
+        }
+
+        // Insert cost price into variant_costs
+        if (productForm.cost_price) {
+          await supabase.from('variant_costs').insert({
+            variant_id: variant.id,
+            cost_price: parseFloat(productForm.cost_price),
+          });
+        }
+
+        // Log initial receiving movement if stock > 0
+        if (parseInt(productForm.stock_quantity) > 0) {
+          await supabase.from('stock_movements').insert({
+            variant_id: variant.id,
+            quantity_change: parseInt(productForm.stock_quantity),
+            movement_type: 'receiving',
+            reference_id: 'Initial Stock',
+          });
+        }
       }
 
       setIsProductModalOpen(false);
+      setIsMultiSize(false);
+      setBatchVariants([]);
       setProductForm({
         name: '',
         brand: 'Top Tendance',
@@ -284,7 +600,7 @@ export default function InventoryDashboardPage() {
     } catch (err: any) {
       if (err?.code === '23505' || err?.message?.includes('variants_sku_key') || err?.message?.includes('duplicate key') || err?.message?.toLowerCase()?.includes('sku')) {
         setIsSkuDuplicate(true);
-        setFormError("Ce SKU existe déjà. Modifiez-le ou utilisez le bouton 'Auto-générer'.");
+        setFormError("Un SKU en doublon a été détecté. Modifiez-le ou utilisez 'Régénérer SKUs & Barcodes'.");
       } else {
         setFormError(err.message || 'Erreur lors de la création');
       }
@@ -526,7 +842,19 @@ export default function InventoryDashboardPage() {
             </button>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto items-center">
+          <div className="flex gap-2 w-full sm:w-auto items-center flex-wrap sm:flex-nowrap">
+            {/* Filter by Print Status */}
+            <select
+              value={printFilter}
+              onChange={(e) => setPrintFilter(e.target.value as any)}
+              className="text-xs border rounded-xl p-2.5 bg-gray-50 focus:bg-white min-h-[40px] font-medium"
+              title="Filtrer selon le statut d'impression des étiquettes"
+            >
+              <option value="all">Toutes étiquettes</option>
+              <option value="unprinted">Non imprimés seulement</option>
+              <option value="printed">Déjà imprimés</option>
+            </select>
+
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
@@ -567,6 +895,43 @@ export default function InventoryDashboardPage() {
         <div className="bg-white rounded-2xl border shadow-xs overflow-hidden">
           {/* Mobile Card View (shown below md screen breakpoint) */}
           <div className="block md:hidden divide-y divide-gray-100">
+            {/* Mobile Select All & Quick Selection Bar */}
+            {visiblePrintableVariants.length > 0 && (
+              <div className="p-3 bg-gray-50 flex flex-wrap items-center justify-between gap-2 border-b">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllVisible}
+                  className="flex items-center gap-2 text-xs font-semibold text-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    checked={areAllVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                  />
+                  <span>Sélectionner tout ({visiblePrintableVariants.length})</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllUnprinted}
+                    className="px-2 py-1 bg-white border border-gray-300 hover:border-black rounded-lg text-[11px] font-semibold text-gray-800 transition"
+                  >
+                    Non imprimés
+                  </button>
+                  {selectedVariants.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="text-[11px] text-gray-500 hover:text-black underline"
+                    >
+                      Effacer
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {loading ? (
               <div className="text-center py-12 text-gray-400 text-xs">
                 Chargement de l'inventaire...
@@ -579,12 +944,41 @@ export default function InventoryDashboardPage() {
               filteredProducts.map((product) =>
                 product.variants.map((variant) => {
                   const isLowStock = variant.stock_quantity <= variant.low_stock_threshold;
+                  const isSelected = selectedVariants.has(variant.id);
                   return (
-                    <div key={variant.id} className="p-4 space-y-2.5">
+                    <div
+                      key={variant.id}
+                      className={`p-4 space-y-2.5 transition-colors ${
+                        isSelected ? 'bg-amber-50/40' : ''
+                      }`}
+                    >
                       <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-gray-900 text-sm">{product.name}</p>
-                          <p className="font-mono text-gray-500 text-xs mt-0.5">{variant.sku}</p>
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          {variant.barcode ? (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() =>
+                                toggleSelectVariant({
+                                  variantId: variant.id,
+                                  productName: product.name,
+                                  sku: variant.sku,
+                                  barcode: variant.barcode!,
+                                  size: variant.size,
+                                  color: variant.color,
+                                  selling_price: variant.selling_price,
+                                  stock_quantity: variant.stock_quantity,
+                                })
+                              }
+                              className="w-4 h-4 mt-0.5 rounded border-gray-300 text-black focus:ring-black cursor-pointer shrink-0"
+                            />
+                          ) : (
+                            <div className="w-4 h-4 shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-gray-900 text-sm">{product.name}</p>
+                            <p className="font-mono text-gray-500 text-xs mt-0.5">{variant.sku}</p>
+                          </div>
                         </div>
                         <span
                           className={`px-2.5 py-1 rounded-full font-mono font-bold text-xs shrink-0 ${
@@ -604,6 +998,19 @@ export default function InventoryDashboardPage() {
                         {variant.color && (
                           <span className="bg-gray-100 px-2 py-0.5 rounded font-mono">{variant.color}</span>
                         )}
+                        {/* Printed status badge */}
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePrintedStatus(variant.id, variant.is_printed)}
+                          title="Cliquer pour changer le statut d'impression"
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+                            variant.is_printed
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                          }`}
+                        >
+                          {variant.is_printed ? '✓ Imprimé' : 'Non imprimé'}
+                        </button>
                         <span className="font-mono text-[11px] text-gray-400 ml-auto">
                           {variant.barcode || 'Sans code'}
                         </span>
@@ -628,6 +1035,7 @@ export default function InventoryDashboardPage() {
                           <button
                             onClick={() =>
                               setTagModalVariant({
+                                variantId: variant.id,
                                 productName: product.name,
                                 sku: variant.sku,
                                 barcode: variant.barcode!,
@@ -661,9 +1069,19 @@ export default function InventoryDashboardPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 text-gray-500 uppercase border-b font-semibold">
                 <tr>
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={areAllVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      title="Sélectionner / désélectionner tout"
+                      className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Produit / SKU</th>
                   <th className="p-4">Attributs</th>
                   <th className="p-4">Code-barres</th>
+                  <th className="p-4 text-center">Étiquette</th>
                   <th className="p-4 text-right">P. Vente (DT)</th>
                   <th className="p-4 text-right">P. Achat (DT)</th>
                   <th className="p-4 text-center">Stock</th>
@@ -673,13 +1091,13 @@ export default function InventoryDashboardPage() {
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-400">
+                    <td colSpan={9} className="text-center py-12 text-gray-400">
                       Chargement de l'inventaire...
                     </td>
                   </tr>
                 ) : filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-400">
+                    <td colSpan={9} className="text-center py-12 text-gray-400">
                       Aucun produit ne correspond aux critères
                     </td>
                   </tr>
@@ -687,8 +1105,39 @@ export default function InventoryDashboardPage() {
                   filteredProducts.map((product) =>
                     product.variants.map((variant) => {
                       const isLowStock = variant.stock_quantity <= variant.low_stock_threshold;
+                      const isSelected = selectedVariants.has(variant.id);
                       return (
-                        <tr key={variant.id} className="hover:bg-gray-50/80 transition">
+                        <tr
+                          key={variant.id}
+                          className={`transition ${
+                            isSelected
+                              ? 'bg-amber-50/60 hover:bg-amber-100/60'
+                              : 'hover:bg-gray-50/80'
+                          }`}
+                        >
+                          <td className="p-4 text-center">
+                            {variant.barcode ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() =>
+                                  toggleSelectVariant({
+                                    variantId: variant.id,
+                                    productName: product.name,
+                                    sku: variant.sku,
+                                    barcode: variant.barcode!,
+                                    size: variant.size,
+                                    color: variant.color,
+                                    selling_price: variant.selling_price,
+                                    stock_quantity: variant.stock_quantity,
+                                  })
+                                }
+                                className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                              />
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
                           <td className="p-4">
                             <p className="font-bold text-gray-900">{product.name}</p>
                             <p className="font-mono text-gray-500 text-[11px]">{variant.sku}</p>
@@ -699,6 +1148,20 @@ export default function InventoryDashboardPage() {
                           </td>
                           <td className="p-4 font-mono text-gray-700">
                             {variant.barcode || <span className="text-gray-400 italic">Non assigné</span>}
+                          </td>
+                          <td className="p-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePrintedStatus(variant.id, variant.is_printed)}
+                              title="Cliquer pour basculer le statut d'impression"
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+                                variant.is_printed
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                              }`}
+                            >
+                              {variant.is_printed ? '✓ Imprimé' : 'Non imprimé'}
+                            </button>
                           </td>
                           <td className="p-4 text-right font-mono font-bold text-gray-950">
                             {variant.selling_price.toFixed(3)}
@@ -722,6 +1185,7 @@ export default function InventoryDashboardPage() {
                               <button
                                 onClick={() =>
                                   setTagModalVariant({
+                                    variantId: variant.id,
                                     productName: product.name,
                                     sku: variant.sku,
                                     barcode: variant.barcode!,
@@ -753,12 +1217,62 @@ export default function InventoryDashboardPage() {
             </table>
           </div>
         </div>
+
+        {/* Floating Batch Action Toolbar */}
+        {selectedVariants.size > 0 && (
+          <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-gray-950 text-white px-4 sm:px-6 py-3 rounded-2xl shadow-2xl border border-gray-800 flex items-center gap-3 sm:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-amber-400 text-black font-extrabold text-xs flex items-center justify-center">
+                {selectedVariants.size}
+              </span>
+              <span className="text-xs sm:text-sm font-semibold">
+                {selectedVariants.size > 1 ? 'articles sélectionnés' : 'article sélectionné'}
+              </span>
+            </div>
+
+            <div className="h-4 w-px bg-gray-700 hidden sm:block" />
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // If single item selected, open modal with that single item;
+                  // otherwise pass the array to tagModalVariant once updated in Step B
+                  const list = Array.from(selectedVariants.values());
+                  if (list.length === 1) {
+                    setTagModalVariant(list[0]);
+                  } else {
+                    setTagModalVariant(list);
+                  }
+                }}
+                className="bg-white hover:bg-gray-100 text-gray-900 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-xs"
+              >
+                <Printer size={15} />
+                <span>Imprimer les étiquettes</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-gray-200 text-gray-800 font-mono text-[10px]">
+                  {Array.from(selectedVariants.values()).reduce((sum, item) => sum + item.quantity, 0)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="text-gray-400 hover:text-white px-2 sm:px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+                title="Désélectionner tout"
+              >
+                <X size={14} />
+                <span className="hidden sm:inline">Désélectionner</span>
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Barcode Tag Generator Modal */}
       <BarcodeTagModal
         variant={tagModalVariant}
         onClose={() => setTagModalVariant(null)}
+        onPrinted={handleVariantsPrinted}
       />
 
       {/* Mobile Camera Barcode Scanner Modal */}
@@ -836,79 +1350,290 @@ export default function InventoryDashboardPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[11px] font-bold text-gray-700 uppercase">
-                      SKU (Unique)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleAutoGenerateSku}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 hover:underline"
-                    >
-                      <Sparkles size={11} /> Auto-générer
-                    </button>
+              {/* Mode Toggle: Single Variant vs Multi-Sizes */}
+              <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers size={15} className="text-gray-700" />
+                    <div>
+                      <p className="text-xs font-bold text-gray-900">Tailles Multiples en Lot (Bottes, Vêtements...)</p>
+                      <p className="text-[10px] text-gray-500">Générer automatiquement une plage de tailles avec codes uniques</p>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={productForm.sku}
-                    onChange={(e) => {
-                      setProductForm({ ...productForm, sku: e.target.value });
-                      if (isSkuDuplicate) setIsSkuDuplicate(false);
-                    }}
-                    className={`w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono transition ${
-                      isSkuDuplicate
-                        ? 'border-red-500 bg-red-50 focus:border-red-600 focus:ring-1 focus:ring-red-400'
-                        : 'border-gray-200'
-                    }`}
-                    placeholder="Ex: ROBE-SAT-M-NOIR"
-                  />
-                  {isSkuDuplicate && (
-                    <p className="text-[10px] text-red-600 mt-1">
-                      SKU déjà existant dans la base.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                    Code-barres (EAN/Code128)
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isMultiSize}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setIsMultiSize(checked);
+                        if (checked && batchVariants.length === 0) {
+                          handleApplyShoeRange(shoeStart, shoeEnd);
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-black"></div>
                   </label>
-                  <input
-                    type="text"
-                    value={productForm.barcode}
-                    onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
-                    className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono"
-                    placeholder="619..."
-                  />
                 </div>
+
+                {isMultiSize && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 space-y-2.5">
+                    {/* Presets */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-gray-600 uppercase mr-1">Préréglages:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShoeStart(36);
+                          setShoeEnd(40);
+                          handleApplyShoeRange(36, 40);
+                        }}
+                        className="text-[10px] bg-white border border-gray-300 hover:border-black px-2 py-1 rounded-md font-semibold text-gray-700 transition"
+                      >
+                        Bottes/Chaussures (36-40)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShoeStart(36);
+                          setShoeEnd(41);
+                          handleApplyShoeRange(36, 41);
+                        }}
+                        className="text-[10px] bg-white border border-gray-300 hover:border-black px-2 py-1 rounded-md font-semibold text-gray-700 transition"
+                      >
+                        36 à 41
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyClothingPreset}
+                        className="text-[10px] bg-white border border-gray-300 hover:border-black px-2 py-1 rounded-md font-semibold text-gray-700 transition"
+                      >
+                        Vêtements (XS-XXL)
+                      </button>
+                    </div>
+
+                    {/* Range Selector */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <div className="flex items-center gap-1.5 bg-white p-1.5 border rounded-lg">
+                        <span className="text-[10px] text-gray-500 font-bold">Plage pointures:</span>
+                        <input
+                          type="number"
+                          min="20"
+                          max="50"
+                          value={shoeStart}
+                          onChange={(e) => setShoeStart(parseInt(e.target.value) || 36)}
+                          className="w-12 text-center text-xs border rounded p-1 font-mono"
+                        />
+                        <span className="text-xs text-gray-400">à</span>
+                        <input
+                          type="number"
+                          min="20"
+                          max="50"
+                          value={shoeEnd}
+                          onChange={(e) => setShoeEnd(parseInt(e.target.value) || 40)}
+                          className="w-12 text-center text-xs border rounded p-1 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleApplyShoeRange(shoeStart, shoeEnd)}
+                          className="text-[10px] bg-black text-white px-2 py-1 rounded font-bold hover:bg-gray-800 ml-auto"
+                        >
+                          Appliquer
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1 bg-white p-1.5 border rounded-lg">
+                        <input
+                          type="text"
+                          placeholder="Tailles libres: 36,37,38..."
+                          value={customSizesInput}
+                          onChange={(e) => setCustomSizesInput(e.target.value)}
+                          className="flex-1 text-xs border rounded p-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyCustomSizes}
+                          className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-800 px-2 py-1 rounded font-bold"
+                        >
+                          Ajouter
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                    Taille
-                  </label>
-                  <input
-                    type="text"
-                    value={productForm.size}
-                    onChange={(e) => setProductForm({ ...productForm, size: e.target.value })}
-                    className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
-                  />
+              {/* Single Variant Input Fields (only when isMultiSize is false) */}
+              {!isMultiSize ? (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-gray-700 uppercase">
+                          SKU (Unique)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAutoGenerateSku}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 hover:underline"
+                        >
+                          <Sparkles size={11} /> Auto-générer
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={productForm.sku}
+                        onChange={(e) => {
+                          setProductForm({ ...productForm, sku: e.target.value });
+                          if (isSkuDuplicate) setIsSkuDuplicate(false);
+                        }}
+                        className={`w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono transition ${
+                          isSkuDuplicate
+                            ? 'border-red-500 bg-red-50 focus:border-red-600 focus:ring-1 focus:ring-red-400'
+                            : 'border-gray-200'
+                        }`}
+                        placeholder="Ex: ROBE-SAT-M-NOIR"
+                      />
+                      {isSkuDuplicate && (
+                        <p className="text-[10px] text-red-600 mt-1">
+                          SKU déjà existant dans la base.
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
+                        Code-barres (EAN/Code128)
+                      </label>
+                      <input
+                        type="text"
+                        value={productForm.barcode}
+                        onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
+                        className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl font-mono"
+                        placeholder="619..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
+                        Taille
+                      </label>
+                      <input
+                        type="text"
+                        value={productForm.size}
+                        onChange={(e) => setProductForm({ ...productForm, size: e.target.value })}
+                        className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
+                        Couleur
+                      </label>
+                      <input
+                        type="text"
+                        value={productForm.color}
+                        onChange={(e) => setProductForm({ ...productForm, color: e.target.value })}
+                        className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Multi-Size Variant Table Preview */
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
+                        Couleur Commune
+                      </label>
+                      <input
+                        type="text"
+                        value={productForm.color}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setProductForm({ ...productForm, color: val });
+                          setBatchVariants((prev) =>
+                            prev.map((v) => ({
+                              ...v,
+                              sku: generateVariantSku(productForm.name || 'PROD', v.size, val),
+                            }))
+                          );
+                        }}
+                        className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
+                        placeholder="Ex: Noir"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          applySizeListToBatch(batchVariants.map((v) => v.size));
+                        }}
+                        className="w-full py-2.5 px-3 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                      >
+                        <RefreshCw size={13} /> Régénérer SKUs & Barcodes
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-100 px-3 py-1.5 flex justify-between items-center text-[11px] font-bold text-gray-700">
+                      <span>Tailles & Codes Générés ({batchVariants.length})</span>
+                      <span className="text-[10px] text-gray-500 font-normal">Chaque taille a un code unique</span>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 text-xs">
+                      {batchVariants.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-gray-400">
+                          Aucune taille sélectionnée. Cliquez sur un préréglage ci-dessus.
+                        </div>
+                      ) : (
+                        batchVariants.map((item, idx) => (
+                          <div key={idx} className="p-2 sm:p-2.5 flex flex-wrap items-center gap-2 hover:bg-gray-50">
+                            <span className="inline-flex items-center justify-center w-8 h-7 bg-black text-white font-black text-xs rounded-lg">
+                              {item.size}
+                            </span>
+                            <div className="flex-1 min-w-[130px]">
+                              <p className="font-mono text-[10px] text-gray-500 truncate">{item.sku}</p>
+                              <div className="flex items-center gap-1 text-[11px] font-mono text-gray-900 font-bold">
+                                <Barcode size={12} className="text-gray-400" />
+                                <span>{item.barcode}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <label className="text-[10px] text-gray-400 font-bold uppercase">Qté:</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.stock}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  setBatchVariants((prev) =>
+                                    prev.map((v, i) => (i === idx ? { ...v, stock: val } : v))
+                                  );
+                                }}
+                                className="w-14 text-center border rounded p-1 font-mono text-xs"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBatchVariants((prev) => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="text-gray-400 hover:text-red-600 p-1 rounded"
+                              title="Supprimer cette taille"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                    Couleur
-                  </label>
-                  <input
-                    type="text"
-                    value={productForm.color}
-                    onChange={(e) => setProductForm({ ...productForm, color: e.target.value })}
-                    className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
