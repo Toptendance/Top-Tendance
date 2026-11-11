@@ -62,82 +62,82 @@ flowchart TD
 
 ### PHASE 1: Google OAuth Authentication for All Roles
 
-- [ ] **1.1 Supabase & Google Cloud Configuration**
-  - [ ] Configure Google Cloud Console:
-    - [ ] Create OAuth 2.0 Web Client credentials.
-    - [ ] Set Authorized Redirect URI: `https://uqwvbbuxriiduedhdqwl.supabase.co/auth/v1/callback`.
-  - [ ] Configure Supabase Authentication:
-    - [ ] Enable Google Provider under Supabase Dashboard -> Authentication -> Providers -> Google.
-    - [ ] Input Google Client ID & Google Client Secret.
-    - [ ] Add Redirect URLs in Supabase URL Configuration:
+- [x] **1.1 Supabase & Google Cloud Configuration**
+  - [x] Configure Google Cloud Console:
+    - [x] Create OAuth 2.0 Web Client credentials.
+    - [x] Set Authorized Redirect URI: `https://uqwvbbuxriiduedhdqwl.supabase.co/auth/v1/callback`.
+  - [x] Configure Supabase Authentication:
+    - [x] Enable Google Provider under Supabase Dashboard -> Authentication -> Providers -> Google.
+    - [x] Input Google Client ID & Google Client Secret.
+    - [x] Add Redirect URLs in Supabase URL Configuration:
       - `https://toptendance.net/auth/callback`
       - `http://localhost:3000/auth/callback`
-  - [ ] Update `profiles` table check constraint to support all roles (`customer`, `cashier`, `manager`):
+  - [x] Update `profiles` table check constraint to support all roles (`customer`, `cashier`, `manager`):
     ```sql
     ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
     ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('customer', 'cashier', 'manager'));
     ```
 
-- [ ] **1.2 Database Profile Auto-Sync Trigger**
-  - [ ] Create a robust PostgreSQL trigger on `auth.users` on `INSERT`:
+- [x] **1.2 Database Profile Auto-Sync Trigger**
+  - [x] Create a robust PostgreSQL trigger on `auth.users` on `INSERT`:
     - Automatically create a `public.profiles` row if none exists yet.
     - Default `role` to `'customer'` for organic public registrations.
     - Extract `full_name` from Google OAuth metadata (`raw_user_meta_data->>'full_name'` or `raw_user_meta_data->>'name'`).
     - If user was pre-registered as `cashier` or `manager` by email, preserve their elevated role!
 
-- [ ] **1.3 Next.js Auth Callback Route Handler (`src/app/auth/callback/route.ts`)**
-  - [ ] Create `src/app/auth/callback/route.ts` using `@supabase/ssr`:
-    - [ ] Extract `code` and optional `next` or `redirectTo` parameter from request URL.
-    - [ ] Exchange `code` for a session: `supabase.auth.exchangeCodeForSession(code)`.
-    - [ ] Retrieve authenticated user ID and query `public.profiles` for `role`.
-    - [ ] Role-based intelligent redirect:
+- [x] **1.3 Next.js Auth Callback Route Handler (`src/app/auth/callback/route.ts`)**
+  - [x] Create `src/app/auth/callback/route.ts` using `@supabase/ssr`:
+    - [x] Extract `code` and optional `next` or `redirectTo` parameter from request URL.
+    - [x] Exchange `code` for a session: `supabase.auth.exchangeCodeForSession(code)`.
+    - [x] Retrieve authenticated user ID and query `public.profiles` for `role`.
+    - [x] Role-based intelligent redirect:
       - `manager` $\rightarrow$ `/inventory`
       - `cashier` $\rightarrow$ `/pos`
       - `customer` $\rightarrow$ `next` parameter (if valid internal route) or `/account`.
-    - [ ] Error fallback: If exchange fails, redirect to `/login?error=oauth_failed`.
+    - [x] Error fallback: If exchange fails, redirect to `/login?error=oauth_failed`.
 
-- [ ] **1.4 UI Integration on Login & Register Screens**
-  - [ ] Update `src/app/login/page.tsx`:
-    - [ ] Add high-contrast, stylish "Continuer avec Google" button with official Google SVG icon.
-    - [ ] Implement `handleGoogleLogin()` invoking `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: ... } })`.
-    - [ ] Retain existing email/password login as fallback.
-  - [ ] Update `src/app/register/page.tsx`:
-    - [ ] Add "S'inscrire avec Google" button.
-    - [ ] Display subtle separator (`── ou avec votre email ──`).
+- [x] **1.4 UI Integration on Login & Register Screens**
+  - [x] Update `src/app/login/page.tsx`:
+    - [x] Add high-contrast, stylish "Continuer avec Google" button with official Google SVG icon.
+    - [x] Implement `handleGoogleLogin()` invoking `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: ... } })`.
+    - [x] Retain existing email/password login as fallback.
+  - [x] Update `src/app/register/page.tsx`:
+    - [x] Add "S'inscrire avec Google" button.
+    - [x] Display subtle separator (`── ou avec votre email ──`).
 
 ---
 
 ### PHASE 2: Manager Dashboard — Cashier Team Management
 
-- [ ] **2.1 Server-Side Cashier Management API (`/api/manager/cashiers`)**
-  - [ ] Create `src/app/api/manager/cashiers/route.ts`:
-    - [ ] **Security verification**:
+- [x] **2.1 Server-Side Cashier Management API (`/api/manager/cashiers`)**
+  - [x] Create `src/app/api/manager/cashiers/route.ts`:
+    - [x] **Security verification**:
       - Read session cookies via `createServerClient` (`@supabase/ssr`).
       - Verify caller identity with `supabase.auth.getUser()`.
       - Query `public.profiles` to strictly assert `role === 'manager'`. Deny with 403 Forbidden if not a manager.
-    - [ ] **GET Handler**:
+    - [x] **GET Handler**:
       - Returns list of cashiers (`id`, `full_name`, `phone`, `email`, `created_at`, `last_sign_in_at`).
-    - [ ] **POST Handler (Add Cashier)**:
+    - [x] **POST Handler (Add Cashier)**:
       - Validate payload: `fullName`, `email`, `phone`, `password`.
       - Use Supabase Admin Client (`SUPABASE_SERVICE_ROLE_KEY`):
         - Call `supabaseAdmin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName, phone } })`.
         - Upsert into `public.profiles` with `role = 'cashier'`, `full_name = fullName`, `phone = phone`.
       - Return newly created cashier record (omitting sensitive auth tokens).
-    - [ ] **DELETE / PATCH Handlers**:
+    - [x] **DELETE / PATCH Handlers**:
       - Allow manager to deactivate/delete cashier or reset their credentials.
 
-- [ ] **2.2 Environment Variables Configuration**
-  - [ ] Ensure `SUPABASE_SERVICE_ROLE_KEY` is documented and added to `.env.local` / production environment for secure server-side admin user creation.
+- [x] **2.2 Environment Variables Configuration**
+  - [x] Ensure `SUPABASE_SERVICE_ROLE_KEY` is documented and added to `.env.local` / production environment for secure server-side admin user creation.
 
-- [ ] **2.3 Manager Dashboard UI for Cashier Management**
-  - [ ] Create dedicated "Équipe & Caissiers" tab or sub-page in Manager area:
-    - [ ] Header metric counters: Total Caissiers actifs, Caissiers en service.
-    - [ ] Searchable & filterable Cashier table (Nom, Email, Téléphone, Date d'ajout, Statut).
-    - [ ] "Nouveau Caissier" button opening a clean modal dialog:
+- [x] **2.3 Manager Dashboard UI for Cashier Management**
+  - [x] Create dedicated "Équipe & Caissiers" tab or sub-page in Manager area:
+    - [x] Header metric counters: Total Caissiers actifs, Caissiers en service.
+    - [x] Searchable & filterable Cashier table (Nom, Email, Téléphone, Date d'ajout, Statut).
+    - [x] "Nouveau Caissier" button opening a clean modal dialog:
       - Fields: Nom complet, Email (Google ou pro), Numéro de téléphone (Tunisie +216), Mot de passe temporaire.
       - Option: "Générer un mot de passe sécurisé" button.
       - Note: "Si le caissier utilise son adresse Google, il pourra également se connecter en 1 clic avec Google".
-    - [ ] Delete / Deactivate confirmation modal.
+    - [x] Delete / Deactivate confirmation modal.
 
 ---
 

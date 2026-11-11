@@ -5,6 +5,7 @@ import { supabase } from '@/utils/supabaseClient';
 import BarcodeTagModal from '@/components/pos/BarcodeTagModal';
 import DeliveryReceivingModal from '@/components/pos/DeliveryReceivingModal';
 import MobileScannerModal from '@/components/pos/MobileScannerModal';
+import CashierManagementSection from '@/components/manager/CashierManagementSection';
 import { useToast } from '@/context/ToastContext';
 import {
   Boxes,
@@ -28,7 +29,8 @@ import {
   Sliders,
   CheckSquare,
   Square,
-  Printer
+  Printer,
+  Users
 } from 'lucide-react';
 import { generateUniqueBarcode, generateVariantSku } from '@/utils/barcodeGenerator';
 import Link from 'next/link';
@@ -58,6 +60,7 @@ interface ProductWithVariants {
 
 export default function InventoryDashboardPage() {
   const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState<'inventory' | 'cashiers'>('inventory');
   const [products, setProducts] = useState<ProductWithVariants[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -744,29 +747,59 @@ export default function InventoryDashboardPage() {
           </Link>
           <div className="h-4 w-px bg-gray-300 hidden sm:block" />
           <h1 className="font-extrabold text-base sm:text-xl text-gray-900 tracking-tight">
-            Gestion Stock & Inventaire
+            Gestion Boutique & Responsable
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+        {/* Tab switchers in Header */}
+        <div className="flex items-center bg-gray-100 p-1 rounded-xl">
           <button
-            onClick={() => setIsReceivingModalOpen(true)}
-            className="flex-1 sm:flex-initial justify-center bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition min-h-[40px]"
+            onClick={() => setActiveTab('inventory')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              activeTab === 'inventory'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
           >
-            <PackagePlus size={15} /> <span>Réception</span>
+            <Boxes size={14} /> Stock & Articles
           </button>
           <button
-            onClick={() => setIsProductModalOpen(true)}
-            className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px]"
+            onClick={() => setActiveTab('cashiers')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              activeTab === 'cashiers'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
           >
-            <Plus size={15} /> <span>Nouveau Produit</span>
+            <Users size={14} /> Équipe & Caissiers
           </button>
         </div>
+
+        {activeTab === 'inventory' && (
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => setIsReceivingModalOpen(true)}
+              className="flex-1 sm:flex-initial justify-center bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition min-h-[40px]"
+            >
+              <PackagePlus size={15} /> <span>Réception</span>
+            </button>
+            <button
+              onClick={() => setIsProductModalOpen(true)}
+              className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px]"
+            >
+              <Plus size={15} /> <span>Nouveau Produit</span>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}
       <main className="flex-1 p-3.5 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
-        {/* KPI Cards */}
+        {activeTab === 'cashiers' ? (
+          <CashierManagementSection />
+        ) : (
+          <>
+            {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex items-center justify-between">
             <div>
@@ -1265,6 +1298,8 @@ export default function InventoryDashboardPage() {
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
       </main>
 

@@ -42,7 +42,7 @@ The system supports **3 distinct user roles** managed via the `profiles` table i
 ## 3. Database Schema & Security Architecture
 
 ### Tables in Supabase (`public` schema)
-1. `profiles`: `id (uuid PK)`, `role (text: 'manager'|'cashier'|'customer')`, `full_name`, `phone`
+1. `profiles`: `id (uuid PK)`, `role (text: 'manager'|'cashier'|'customer')`, `full_name`, `phone`, `is_active (bool default true)` *(Updated 2026-11-11 with role check & is_active)*
 2. `categories`: `id (uuid PK)`, `name (text)`, `description (text)`
 3. `products`: `id (uuid PK)`, `name`, `brand`, `category_id (FK)`, `is_active (bool default true)`
 4. `variants`: `id (uuid PK)`, `product_id (FK)`, `sku (unique)`, `barcode (unique)`, `size`, `color`, `selling_price (numeric 12,3)`, `stock_quantity (int)`, `low_stock_threshold (int)`, `is_active (bool default true)`, `is_printed (bool default false)`, `last_printed_at (timestamptz default null)` *(Updated 2026-11-10)*
@@ -70,17 +70,23 @@ The system supports **3 distinct user roles** managed via the `profiles` table i
 src/
 ├── app/
 │   ├── account/page.tsx        ← Client dashboard: 4 tabs (Online Orders, Store Purchases, Addresses, Profile)
-│   ├── inventory/page.tsx      ← Manager inventory dashboard: KPIs, stock alerts, filters, delivery modal, soft-delete
+│   ├── inventory/page.tsx      ← Manager dashboard: Stock & articles tab + Équipe & Caissiers tab
 │   ├── pos/page.tsx            ← POS Cashier screen: Barcode auto-focus (F2), hotkeys (F9), cart, quick pay
 │   ├── reports/page.tsx        ← Manager analytics: sales, profits, stock valuation
-│   ├── login/page.tsx          ← Auth page with Suspense boundary & role-based intelligent redirect
+│   ├── login/page.tsx          ← Auth page with Google OAuth button + email login & intelligent redirect
+│   ├── register/page.tsx       ← Register page with Google OAuth button + email signup
+│   ├── auth/callback/route.ts  ← Next.js Route Handler exchanging OAuth code for session cookies & smart role redirect
+│   ├── api/manager/cashiers/   ← Protected manager API route: list, create (admin), toggle status, reset password, delete cashiers
+│   ├── privacy/ & terms/       ← Production-ready legal pages compliant with Google OAuth & Tunisian data laws
 │   ├── women/ & kids/          ← E-commerce catalog pages (SSG)
 │   └── product/[slug]/         ← Product Detail Page (PDP)
 ├── components/
 │   ├── common/
 │   │   ├── Header.tsx          ← Role-aware account menu (Guest / Client / Cashier / Manager shortcuts)
 │   │   ├── MobileMenu.tsx      ← Mobile drawer with discrete staff access
-│   │   └── Footer.tsx          ← Footer with discrete staff login link
+│   │   └── Footer.tsx          ← Footer with discrete staff login link, privacy & terms links
+│   ├── manager/
+│   │   └── CashierManagementSection.tsx ← Manager cashier team management (roster table, add modal, status toggle, credentials reset)
 │   ├── pos/
 │   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2410 offset calibration, dynamic multi-page layout, and auto "mark as printed" tracking
 │   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
@@ -148,7 +154,18 @@ src/
     - **Double Submit & Freeze Prevention**: Maintained button `loading` state through redirect (only clearing `loading` in `catch`), preventing freeze and duplicate requests.
     - **Middleware Fail-Safe**: In `src/middleware.ts`, added explicit error handling for the `profiles` role lookup to immediately redirect to `/login` if DB fails or times out rather than hanging.
     - **Cleaned Obsolete UI**: Removed unused "Se souvenir de moi" checkbox and state from `src/app/login/page.tsx` as Supabase persistent sessions are managed automatically in client storage.
+  - `checklist_auth_cashiers_credit_delivery.md` 🔄 — Phase 1 & 2 completed (2026-11-11):
+    - **Phase 1: Universal Google OAuth**:
+      - Google Cloud & Supabase provider configured for `toptendance.net` with callback `https://uqwvbbuxriiduedhdqwl.supabase.co/auth/v1/callback`.
+      - Supabase `profiles_role_check` constraint updated to include `'customer'`, `'cashier'`, and `'manager'`.
+      - PostgreSQL trigger `on_auth_user_created -> public.handle_new_user()` deployed on `auth.users` to auto-provision user profiles on Google OAuth or direct signup while preserving elevated staff roles.
+      - Next.js Route Handler `src/app/auth/callback/route.ts` deployed to exchange code for session cookies and intelligently redirect based on user role (`/inventory`, `/pos`, or `/account`).
+      - "Continuer avec Google" button with official SVG integrated into `src/app/login/page.tsx` and `src/app/register/page.tsx`.
+      - Production legal pages `src/app/privacy/page.tsx` and `src/app/terms/page.tsx` deployed and linked in footer.
+    - **Phase 2: Cashier Team Management from Manager Dashboard**:
+      - Next.js API Route `src/app/api/manager/cashiers/route.ts` implemented: protected with manager-only verification, lists cashiers, creates accounts with verified credentials via Supabase Admin API (`auth.admin.createUser`), updates active status, resets passwords, and deletes accounts.
+      - Component `src/components/manager/CashierManagementSection.tsx` created and embedded into `src/app/inventory/page.tsx` under a new "Équipe & Caissiers" tab, including KPI metric cards, searchable table, active/inactive toggle, and "Nouveau Caissier" modal with password generator.
 - **Known issues / caveats**:
   - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
   - `returns` / `return_items` tables added 2026-11-09 (not in original schema)
-- **Build**: Passes cleanly with 35 SSG routes and Middleware (`npm run build` exits 0).
+- **Build**: Passes cleanly with 39 SSG routes and Middleware (`npm run build` exits 0).
