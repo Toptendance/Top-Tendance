@@ -204,6 +204,16 @@ export function Footer() {
                   Ma Liste d'Envies
                 </Link>
               </li>
+              <li>
+                <Link href="/privacy" className="hover:text-charcoal transition">
+                  Politique de Confidentialité
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-charcoal transition">
+                  Conditions d'Utilisation
+                </Link>
+              </li>
             </ul>
           </div>
 

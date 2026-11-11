@@ -73,6 +73,7 @@ export default function PosPage() {
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [returnInitialSaleId, setReturnInitialSaleId] = useState<string | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<any>(null);
+  const [activeExchangeCredit, setActiveExchangeCredit] = useState<{ amount: number; saleId?: string } | null>(null);
 
   // Daily Sales Summary state
   const [dailySales, setDailySales] = useState<DailySalesData>({
@@ -81,6 +82,13 @@ export default function PosPage() {
     cashTotal: 0,
     cardTotal: 0,
     splitTotal: 0,
+    refundsTotal: 0,
+    returnsCount: 0,
+    cashRefunds: 0,
+    cardRefunds: 0,
+    netTotal: 0,
+    netCash: 0,
+    netCard: 0,
   });
   const [isDailySalesLoading, setIsDailySalesLoading] = useState(false);
 
@@ -187,41 +195,66 @@ export default function PosPage() {
     };
   }, [currentUser]);
 
-  // Fetch today's sales summary (since 00:00:00 local day)
+  // Fetch today's sales and returns summary (since 00:00:00 local day)
   const fetchDailySales = useCallback(async () => {
     if (!currentUser) return;
     setIsDailySalesLoading(true);
     try {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
+      const isoToday = todayStart.toISOString();
 
-      const { data, error } = await supabase
-        .from('sales')
-        .select('id, final_amount, payment_method, created_at')
-        .gte('created_at', todayStart.toISOString());
+      const [salesRes, returnsRes] = await Promise.all([
+        supabase
+          .from('sales')
+          .select('id, final_amount, payment_method, created_at')
+          .gte('created_at', isoToday),
+        supabase
+          .from('returns')
+          .select('id, total_refunded_amount, refund_payment_method, return_type, created_at')
+          .gte('created_at', isoToday),
+      ]);
 
-      if (!error && data) {
-        let gross = 0;
-        let cash = 0;
-        let card = 0;
-        let split = 0;
+      let gross = 0;
+      let cash = 0;
+      let card = 0;
+      let split = 0;
+      const salesData = salesRes.data || [];
 
-        for (const s of data) {
-          const amt = Number(s.final_amount) || 0;
-          gross += amt;
-          if (s.payment_method === 'cash') cash += amt;
-          else if (s.payment_method === 'card') card += amt;
-          else if (s.payment_method === 'split') split += amt;
-        }
-
-        setDailySales({
-          grossTotal: gross,
-          salesCount: data.length,
-          cashTotal: cash,
-          cardTotal: card,
-          splitTotal: split,
-        });
+      for (const s of salesData) {
+        const amt = Number(s.final_amount) || 0;
+        gross += amt;
+        if (s.payment_method === 'cash') cash += amt;
+        else if (s.payment_method === 'card') card += amt;
+        else if (s.payment_method === 'split') split += amt;
       }
+
+      let refunds = 0;
+      let cashRef = 0;
+      let cardRef = 0;
+      const returnsData = returnsRes.data || [];
+
+      for (const r of returnsData) {
+        const refAmt = Number(r.total_refunded_amount) || 0;
+        refunds += refAmt;
+        if (r.refund_payment_method === 'cash') cashRef += refAmt;
+        else if (r.refund_payment_method === 'card') cardRef += refAmt;
+      }
+
+      setDailySales({
+        grossTotal: gross,
+        salesCount: salesData.length,
+        cashTotal: cash,
+        cardTotal: card,
+        splitTotal: split,
+        refundsTotal: refunds,
+        returnsCount: returnsData.length,
+        cashRefunds: cashRef,
+        cardRefunds: cardRef,
+        netTotal: gross - refunds,
+        netCash: cash - cashRef,
+        netCard: card - cardRef,
+      });
     } catch (err) {
       console.error('Failed to fetch daily sales summary:', err);
     } finally {
@@ -229,28 +262,27 @@ export default function PosPage() {
     }
   }, [currentUser]);
 
-  // Load daily sales on mount & listen to Supabase realtime changes on sales table
+  // Load daily sales on mount & listen to Supabase realtime changes on sales and returns tables
   useEffect(() => {
     if (!currentUser) return;
     fetchDailySales();
 
     const channel = supabase
-      .channel('pos-sales-realtime')
+      .channel('pos-sales-and-returns-realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'sales' },
-        (payload) => {
-          const newSale = payload.new as any;
-          if (newSale && newSale.final_amount) {
-            const amt = Number(newSale.final_amount) || 0;
-            setDailySales((prev) => ({
-              grossTotal: prev.grossTotal + amt,
-              salesCount: prev.salesCount + 1,
-              cashTotal: newSale.payment_method === 'cash' ? prev.cashTotal + amt : prev.cashTotal,
-              cardTotal: newSale.payment_method === 'card' ? prev.cardTotal + amt : prev.cardTotal,
-              splitTotal: newSale.payment_method === 'split' ? prev.splitTotal + amt : prev.splitTotal,
-            }));
-          }
+        () => {
+          // Re-fetch clean consolidated totals to prevent optimistic double-counting
+          fetchDailySales();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'returns' },
+        () => {
+          // Automatically re-fetch when any return or exchange happens
+          fetchDailySales();
         }
       )
       .subscribe();
@@ -547,11 +579,14 @@ export default function PosPage() {
     // Calculate raw cart total
     const rawTotal = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
+    // If an exchange credit is active, combine it into total effective deduction
+    const totalEffectiveDiscount = (activeExchangeCredit?.amount || 0) + discount;
+
     // Pass variant_id, quantity, and proportional effective unit_price to RPC
     const pItems = cart.map((item) => {
       const itemSubtotal = item.unit_price * item.quantity;
       const proportion = rawTotal > 0 ? itemSubtotal / rawTotal : 1;
-      const itemDiscount = discount * proportion;
+      const itemDiscount = totalEffectiveDiscount * proportion;
       const effectiveUnitPrice = rawTotal > 0 && item.quantity > 0
         ? (itemSubtotal - itemDiscount) / item.quantity
         : item.unit_price;
@@ -566,7 +601,7 @@ export default function PosPage() {
     const { data, error } = await supabase.rpc('complete_sale', {
       p_items: pItems,
       p_payment_method: paymentMethod,
-      p_discount: discount,
+      p_discount: totalEffectiveDiscount,
     });
 
     if (error) {
@@ -575,23 +610,15 @@ export default function PosPage() {
 
     setCart([]);
     setIsPaymentOpen(false);
+    setActiveExchangeCredit(null);
     setCompletedReceipt({
       ...data,
       cash_tendered: cashTendered,
       change_due: changeDue,
     });
 
-    // Optimistically update daily sales summary immediately in state
-    if (data && data.final_amount) {
-      const saleAmt = Number(data.final_amount) || 0;
-      setDailySales((prev) => ({
-        grossTotal: prev.grossTotal + saleAmt,
-        salesCount: prev.salesCount + 1,
-        cashTotal: paymentMethod === 'cash' ? prev.cashTotal + saleAmt : prev.cashTotal,
-        cardTotal: paymentMethod === 'card' ? prev.cardTotal + saleAmt : prev.cardTotal,
-        splitTotal: paymentMethod === 'split' ? prev.splitTotal + saleAmt : prev.splitTotal,
-      }));
-    }
+    // Re-fetch clean consolidated daily sales and returns
+    fetchDailySales();
 
     // Update in-memory cache stock levels to stay in sync
     for (const item of pItems) {
@@ -855,10 +882,26 @@ export default function PosPage() {
 
           {/* Cart Bottom Summary & Checkout Button (Desktop / Tablet inside card) */}
           <div className="p-4 border-t bg-gray-50 space-y-3">
+            {activeExchangeCredit && (
+              <div className="flex justify-between items-center bg-indigo-50 border border-indigo-200 text-indigo-900 px-3 py-1.5 rounded-lg text-xs">
+                <span className="font-semibold">Avoir d'échange en cours :</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold">-{activeExchangeCredit.amount.toFixed(3)} DT</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveExchangeCredit(null)}
+                    className="text-indigo-400 hover:text-indigo-700 font-bold"
+                    title="Annuler l'avoir"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="flex justify-between items-baseline">
               <span className="text-sm font-semibold text-gray-600">Total à payer:</span>
               <span className="text-2xl font-black font-mono text-gray-950">
-                {totalCartAmount.toFixed(3)} <span className="text-sm font-normal">DT</span>
+                {Math.max(0, totalCartAmount - (activeExchangeCredit?.amount || 0)).toFixed(3)} <span className="text-sm font-normal">DT</span>
               </span>
             </div>
 
@@ -917,6 +960,7 @@ export default function PosPage() {
       <PaymentDrawer
         isOpen={isPaymentOpen}
         totalAmount={totalCartAmount}
+        exchangeCredit={activeExchangeCredit?.amount || 0}
         onClose={() => setIsPaymentOpen(false)}
         onConfirmPayment={handleConfirmPayment}
       />
@@ -973,8 +1017,13 @@ export default function PosPage() {
             }
           }
         }}
-        onApplyExchangeCredit={(creditAmount) => {
-          // Play success chime and trigger a daily sales sync
+        onApplyExchangeCredit={(creditAmount, details) => {
+          setActiveExchangeCredit({
+            amount: creditAmount,
+            saleId: details?.saleId,
+          });
+          setIsReturnOpen(false);
+          setReturnInitialSaleId(null);
           fetchDailySales();
         }}
       />

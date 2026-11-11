@@ -43,6 +43,8 @@ export default function DetailedSalesJournal({ onRefreshParent }: DetailedSalesJ
 
   // Transactions & loading states
   const [transactions, setTransactions] = useState<DetailedSaleTransaction[]>([]);
+  const [periodRefundsTotal, setPeriodRefundsTotal] = useState<number>(0);
+  const [periodReturnsCount, setPeriodReturnsCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [expandedSaleIds, setExpandedSaleIds] = useState<Set<string>>(new Set());
@@ -113,18 +115,41 @@ export default function DetailedSalesJournal({ onRefreshParent }: DetailedSalesJ
     }
   }, [periodPreset, customStartDate, customEndDate]);
 
-  // Load sales transactions
+  // Load sales transactions & returns
   const loadTransactions = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const data = await fetchDetailedSales({
-        startDate: startDateISO,
-        endDate: endDateISO,
-        cashierId: selectedCashierId === 'all' ? undefined : selectedCashierId,
-        searchQuery: searchQuery.trim() || undefined,
-      });
-      setTransactions(data);
+      const [salesData, returnsRes] = await Promise.all([
+        fetchDetailedSales({
+          startDate: startDateISO,
+          endDate: endDateISO,
+          cashierId: selectedCashierId === 'all' ? undefined : selectedCashierId,
+          searchQuery: searchQuery.trim() || undefined,
+        }),
+        (() => {
+          let q = supabase
+            .from('returns')
+            .select('total_refunded_amount, cashier_id, created_at');
+          if (startDateISO) q = q.gte('created_at', startDateISO);
+          if (endDateISO) q = q.lte('created_at', endDateISO);
+          if (selectedCashierId && selectedCashierId !== 'all') {
+            q = q.eq('cashier_id', selectedCashierId);
+          }
+          return q;
+        })(),
+      ]);
+
+      setTransactions(salesData);
+
+      if (returnsRes.data) {
+        const total = returnsRes.data.reduce((s, r) => s + (Number(r.total_refunded_amount) || 0), 0);
+        setPeriodRefundsTotal(total);
+        setPeriodReturnsCount(returnsRes.data.length);
+      } else {
+        setPeriodRefundsTotal(0);
+        setPeriodReturnsCount(0);
+      }
     } catch (err: any) {
       console.error('Error loading sales journal:', err);
       setErrorMsg(err.message || 'Erreur lors du chargement des transactions');
@@ -325,7 +350,7 @@ export default function DetailedSalesJournal({ onRefreshParent }: DetailedSalesJ
       </div>
 
       {/* Quick Summary Metrics Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
         {/* Sales count */}
         <div className="bg-white p-4 rounded-2xl border shadow-xs">
           <div className="text-[11px] font-bold uppercase text-gray-500 flex items-center justify-between mb-1">
@@ -378,7 +403,21 @@ export default function DetailedSalesJournal({ onRefreshParent }: DetailedSalesJ
             {formatPrice(summary.totalDiscount)}
           </div>
           <div className="text-[11px] text-gray-400 mt-1 font-medium">
-            Net encaissé: <strong className="font-mono text-gray-700">{formatPrice(summary.netTotal)}</strong>
+            Remises sur tickets
+          </div>
+        </div>
+
+        {/* Retours & Net Réel */}
+        <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 shadow-xs col-span-2 sm:col-span-1">
+          <div className="text-[11px] font-bold uppercase text-emerald-800 flex items-center justify-between mb-1">
+            <span>Net En Caisse</span>
+            <RotateCcw size={15} className="text-rose-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-emerald-900">
+            {formatPrice(Math.max(0, summary.netTotal - periodRefundsTotal))}
+          </div>
+          <div className="text-[11px] text-emerald-700 mt-1 font-medium">
+            {periodReturnsCount > 0 ? `Retours: -${formatPrice(periodRefundsTotal)} (${periodReturnsCount})` : 'Aucun retour sur la période'}
           </div>
         </div>
       </div>

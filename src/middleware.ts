@@ -55,13 +55,20 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/inventory') ||
     pathname.startsWith('/reports')
   ) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    const userRole = profile?.role;
+    // If the profiles fetch fails (DB timeout, network error), redirect to login
+    if (profileError || !profile) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+
+    const userRole = profile.role;
 
     // /inventory and /reports require manager role
     if (pathname.startsWith('/inventory') || pathname.startsWith('/reports')) {

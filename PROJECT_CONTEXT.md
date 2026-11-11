@@ -17,7 +17,7 @@
 | **Icons & Audio** | `lucide-react`, Web Audio API (`posAudio.ts`) | Barcode scanner sounds (success / error beeps) |
 | **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2410 calibration |
 | **Currency** | Tunisian Dinar (`TND` / `DT`) | All financial DB columns: `numeric(12,3)` |
-| **Production Domain** | `https://toptendance.tn` | Supabase Site URL & Redirect URLs configured |
+| **Production Domain** | `https://toptendance.net` | Supabase Site URL & Redirect URLs configured |
 
 ---
 
@@ -56,7 +56,7 @@ The system supports **3 distinct user roles** managed via the `profiles` table i
 12. `customer_wishlists`: `id (uuid PK)`, `user_id (FK)`, `variant_id (FK)`, `created_at`
 
 ### RPC Functions (`SECURITY DEFINER`)
-- `complete_sale(p_items jsonb, p_payment_method text, p_discount numeric)`: Atomically validates stock, inserts sale record + sale items, decrements stock quantities, logs stock movements.
+- `complete_sale(p_items jsonb, p_payment_method text, p_discount numeric)`: Atomically validates stock, inserts sale record + sale items, decrements stock quantities, logs stock movements. *(Updated 2026-11-10: Accepts `unit_price` in `p_items` JSONB to distribute global discounts directly to `sale_items.unit_price`, ensuring returns reflect the exact discounted price paid).*
 - `receive_stock(p_items jsonb, p_supplier_name text, p_invoice_number text)`: Increases variant stock and logs receiving movements.
 - `process_return_exchange(p_original_sale_id uuid, p_returned_items jsonb, p_return_type text, p_refund_method text, p_reason text)`: Atomically records a return or exchange, restores stock, logs stock movements. Returns JSONB with return_id and totals. *(Applied via `supabase_step8_returns.sql` on 2026-11-09)*
 - `get_sales_analytics(p_start_date date, p_end_date date)`: Generates manager revenue and profit reports.
@@ -114,8 +114,8 @@ src/
   - `NEXT_PUBLIC_SUPABASE_URL`: `https://uqwvbbuxriiduedhdqwl.supabase.co`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `ey...`
 - **Supabase Auth Config**:
-  - `site_url`: `https://toptendance.tn`
-  - `uri_allow_list`: `https://toptendance.tn/**,http://localhost:3000/**`
+  - `site_url`: `https://toptendance.net`
+  - `uri_allow_list`: `https://toptendance.net/**,http://localhost:3000/**`
 
 ---
 
@@ -138,6 +138,16 @@ src/
     - **Multi-Item Modal (`BarcodeTagModal.tsx`)**: Item breakdown, per-item quantity steppers, global quantity presets, total labels / pages indicator, click-to-pick start position (1–40), and visual sheet color-coded mapping.
     - **Strict A4 Print Layout Engine**: Sequential pagination across 40-cell sheets (4 × 10), pre-skip and trailing empty cell padding, CSS print margins and vector Code-128 SVG barcodes.
     - **Mark as Printed Tracking**: `is_printed` & `last_printed_at` columns on `variants`, automatic update upon printing, manual toggle badge (`✓ Imprimé` / `Non imprimé`), status filter (`Tous | Non imprimés | Déjà imprimés`), and "Sélectionner non imprimés" button.
+  - `checklist_return_discounted_price.md` ✅ — Sections A, B, C, D, E & F done (2026-11-10):
+    - **Discount-Aware Returns (Bug 1)**: `pos/page.tsx` now proportionally distributes global cart discount across each cart item's effective `unit_price`; `complete_sale` RPC updated & redeployed on Supabase to persist effective prices into `sale_items.unit_price`. Returns now accurately display and refund the exact discounted price paid. Legacy sales warning banner added in `ReturnExchangeModal.tsx`.
+    - **Post-Return Stock Cache Sync (Bug 2)**: Added `onReturnCompleted` callback to `ReturnExchangeModal.tsx` and handled in `pos/page.tsx`. Automatically increments in-memory `variantsCacheRef` stock quantities immediately upon return/exchange, eliminating the "rupture de stock" error when immediately re-scanning returned items without requiring a page refresh.
+  - `checklist_fix_return_zero_qty.md` ✅ — (2026-11-10):
+    - **Return Barcode Search Cutoff Fix**: Fixed issue where scanning a barcode (e.g. `2003323196434`) incorrectly reported "Article déjà retourné intégralement" when unreturned sales existed. In `src/components/pos/ReturnExchangeModal.tsx`, increased the `sale_items` lookup limit from 10 to 100 with descending order (`.order('sale_id', { ascending: false }).limit(100)`), ensuring all recent eligible sales are inspected.
+  - `checklist_fix_auth_session_bounce.md` ✅ — Phases 1, 2, 3 & 4 done (2026-11-10):
+    - **Auth Cookie Race Condition Fix**: In `src/app/login/page.tsx`, added `router.refresh()` prior to `router.push()` so Next.js App Router synchronizes browser session cookies with server middleware headers before navigation, resolving bounce-back to `/login` when clicking dashboard links.
+    - **Double Submit & Freeze Prevention**: Maintained button `loading` state through redirect (only clearing `loading` in `catch`), preventing freeze and duplicate requests.
+    - **Middleware Fail-Safe**: In `src/middleware.ts`, added explicit error handling for the `profiles` role lookup to immediately redirect to `/login` if DB fails or times out rather than hanging.
+    - **Cleaned Obsolete UI**: Removed unused "Se souvenir de moi" checkbox and state from `src/app/login/page.tsx` as Supabase persistent sessions are managed automatically in client storage.
 - **Known issues / caveats**:
   - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
   - `returns` / `return_items` tables added 2026-11-09 (not in original schema)

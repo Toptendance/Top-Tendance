@@ -7,6 +7,8 @@ import { playBeep } from '@/utils/posAudio';
 interface PaymentDrawerProps {
   isOpen: boolean;
   totalAmount: number;
+  initialDiscount?: number;
+  exchangeCredit?: number;
   onClose: () => void;
   onConfirmPayment: (paymentData: {
     paymentMethod: 'cash' | 'card' | 'split';
@@ -19,26 +21,49 @@ interface PaymentDrawerProps {
 export default function PaymentDrawer({
   isOpen,
   totalAmount,
+  initialDiscount = 0,
+  exchangeCredit = 0,
   onClose,
   onConfirmPayment,
 }: PaymentDrawerProps) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'split'>('cash');
-  const [discountInput, setDiscountInput] = useState<string>('0');
+  const [discountInput, setDiscountInput] = useState<string>(
+    initialDiscount > 0 ? initialDiscount.toFixed(3) : '0'
+  );
   const [cashTenderedInput, setCashTenderedInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const isCashCustomizedRef = React.useRef(false);
 
   const discount = Math.max(0, parseFloat(discountInput) || 0);
-  const finalAmount = Math.max(0, totalAmount - discount);
+  const effectiveTotal = Math.max(0, totalAmount - exchangeCredit);
+  const finalAmount = Math.max(0, effectiveTotal - discount);
   const cashTendered = parseFloat(cashTenderedInput) || 0;
   const changeDue = Math.max(0, cashTendered - finalAmount);
 
+  // Handle discount change with smart sync for cashTenderedInput
+  const handleDiscountChange = (newDiscountStr: string) => {
+    setDiscountInput(newDiscountStr);
+    const newDiscount = Math.max(0, parseFloat(newDiscountStr) || 0);
+    const newFinal = Math.max(0, effectiveTotal - newDiscount);
+
+    // If user hasn't typed an arbitrary tender amount, keep tender aligned with final net
+    if (!isCashCustomizedRef.current) {
+      setCashTenderedInput(newFinal.toFixed(3));
+    }
+  };
+
+  // Reset and initialize fields only when the drawer opens
   useEffect(() => {
     if (isOpen) {
-      setCashTenderedInput(finalAmount.toFixed(3));
+      isCashCustomizedRef.current = false;
+      const initDisc = initialDiscount > 0 ? initialDiscount.toFixed(3) : '0';
+      setDiscountInput(initDisc);
+      const net = Math.max(0, totalAmount - exchangeCredit - (parseFloat(initDisc) || 0));
+      setCashTenderedInput(net.toFixed(3));
       setErrorMsg(null);
     }
-  }, [isOpen, finalAmount]);
+  }, [isOpen, totalAmount, exchangeCredit, initialDiscount]);
 
   if (!isOpen) return null;
 
@@ -99,6 +124,12 @@ export default function PaymentDrawer({
                 <span>Sous-total:</span>
                 <span className="font-mono font-medium">{totalAmount.toFixed(3)} DT</span>
               </div>
+              {exchangeCredit > 0 && (
+                <div className="flex justify-between text-xs sm:text-sm text-indigo-700 font-semibold bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                  <span>Avoir d'échange appliqué:</span>
+                  <span className="font-mono">-{exchangeCredit.toFixed(3)} DT</span>
+                </div>
+              )}
               <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-gray-600 font-medium">Remise (DT):</span>
                 <input
@@ -106,7 +137,7 @@ export default function PaymentDrawer({
                   step="0.001"
                   min="0"
                   value={discountInput}
-                  onChange={(e) => setDiscountInput(e.target.value)}
+                  onChange={(e) => handleDiscountChange(e.target.value)}
                   className="w-28 text-right font-mono p-1.5 border rounded-lg bg-white text-sm focus:ring-1 focus:ring-black"
                 />
               </div>
@@ -175,7 +206,10 @@ export default function PaymentDrawer({
                     step="0.001"
                     min="0"
                     value={cashTenderedInput}
-                    onChange={(e) => setCashTenderedInput(e.target.value)}
+                    onChange={(e) => {
+                      isCashCustomizedRef.current = true;
+                      setCashTenderedInput(e.target.value);
+                    }}
                     autoFocus
                     className="w-full text-xl sm:text-2xl font-mono font-bold text-right p-2.5 sm:p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
                   />

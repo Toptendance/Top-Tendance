@@ -29,7 +29,8 @@ export default function ZReportModal({
 
   const floatVal = parseFloat(openingFloat) || 0;
   const countedCash = parseFloat(closingCashCounted) || 0;
-  const expectedCashInDrawer = floatVal + stats.cashTotal;
+  const netCash = stats.netCash !== undefined ? stats.netCash : (stats.cashTotal - (stats.cashRefunds || 0));
+  const expectedCashInDrawer = floatVal + netCash;
   const cashDiscrepancy = closingCashCounted ? countedCash - expectedCashInDrawer : 0;
 
   const handlePrint = () => {
@@ -98,26 +99,67 @@ export default function ZReportModal({
                 <span className="font-mono font-bold text-gray-900">{stats.salesCount}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600 flex items-center gap-1.5">
-                  <Banknote size={15} className="text-amber-600" /> Total Espèces (Cash):
-                </span>
-                <span className="font-mono font-bold text-amber-700">{formatPrice(stats.cashTotal)}</span>
+                <span className="text-gray-600">Total Ventes Brutes:</span>
+                <span className="font-mono font-bold text-gray-900">{formatPrice(stats.grossTotal)}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600 flex items-center gap-1.5">
-                  <CreditCard size={15} className="text-blue-600" /> Total Cartes / TPE:
+              <div className="flex justify-between items-center text-sm text-rose-700">
+                <span className="flex items-center gap-1.5">
+                  Total Retours / Remboursements ({stats.returnsCount || 0}):
                 </span>
-                <span className="font-mono font-bold text-blue-700">{formatPrice(stats.cardTotal)}</span>
+                <span className="font-mono font-bold">-{formatPrice(stats.refundsTotal || 0)}</span>
               </div>
-              {stats.splitTotal > 0 && (
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Paiements Mixtes / Split:</span>
-                  <span className="font-mono font-bold text-gray-900">{formatPrice(stats.splitTotal)}</span>
+              <div className="pt-1.5 border-t border-gray-200 flex justify-between items-center text-sm font-bold text-emerald-700">
+                <span>Chiffre Net en Caisse:</span>
+                <span className="font-mono text-base font-black">
+                  {formatPrice(stats.netTotal ?? (stats.grossTotal - (stats.refundsTotal || 0)))}
+                </span>
+              </div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-2">
+                <div className="flex justify-between items-center text-xs text-gray-600">
+                  <span className="flex items-center gap-1.5">
+                    <Banknote size={14} className="text-amber-600" /> Espèces Encaissées:
+                  </span>
+                  <span className="font-mono font-semibold text-gray-800">+{formatPrice(stats.cashTotal)}</span>
                 </div>
-              )}
-              <div className="pt-2 border-t border-gray-200 flex justify-between items-center text-base font-black">
-                <span className="text-gray-900">Chiffre d'Affaires Brut (TTC):</span>
-                <span className="font-mono text-emerald-600">{formatPrice(stats.grossTotal)}</span>
+                {(stats.cashRefunds || 0) > 0 && (
+                  <div className="flex justify-between items-center text-xs text-rose-600">
+                    <span className="flex items-center gap-1.5 pl-5">
+                      ↳ Espèces Remboursées:
+                    </span>
+                    <span className="font-mono font-semibold">-{formatPrice(stats.cashRefunds || 0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-xs text-amber-900 font-bold bg-amber-50/80 px-2 py-1 rounded">
+                  <span>Espèces Nettes Réelles:</span>
+                  <span className="font-mono">{formatPrice(netCash)}</span>
+                </div>
+
+                <div className="flex justify-between items-center text-xs text-gray-600 pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard size={14} className="text-blue-600" /> Cartes / TPE Encaissées:
+                  </span>
+                  <span className="font-mono font-semibold text-gray-800">+{formatPrice(stats.cardTotal)}</span>
+                </div>
+                {(stats.cardRefunds || 0) > 0 && (
+                  <div className="flex justify-between items-center text-xs text-rose-600">
+                    <span className="flex items-center gap-1.5 pl-5">
+                      ↳ Cartes Remboursées:
+                    </span>
+                    <span className="font-mono font-semibold">-{formatPrice(stats.cardRefunds || 0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-xs text-blue-900 font-bold bg-blue-50/80 px-2 py-1 rounded">
+                  <span>Cartes Nettes Réelles:</span>
+                  <span className="font-mono">{formatPrice(stats.netCard ?? (stats.cardTotal - (stats.cardRefunds || 0)))}</span>
+                </div>
+
+                {stats.splitTotal > 0 && (
+                  <div className="flex justify-between items-center text-xs text-gray-600">
+                    <span>Paiements Mixtes / Split:</span>
+                    <span className="font-mono font-bold text-gray-900">{formatPrice(stats.splitTotal)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -161,8 +203,11 @@ export default function ZReportModal({
             {/* Expected vs Actual Drawer math */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs space-y-1.5">
               <div className="flex justify-between">
-                <span className="text-blue-900">Total théorique attendu en caisse (Fond + Espèces):</span>
+                <span className="text-blue-900">Total théorique attendu en caisse (Fond + Espèces nettes):</span>
                 <span className="font-mono font-bold text-blue-950">{formatPrice(expectedCashInDrawer)}</span>
+              </div>
+              <div className="text-[11px] text-blue-700/80 flex justify-between font-mono">
+                <span>Détail: Fond ({formatPrice(floatVal)}) + Espèces nettes ({formatPrice(netCash)})</span>
               </div>
 
               {closingCashCounted && (

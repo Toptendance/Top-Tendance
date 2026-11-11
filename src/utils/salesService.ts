@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabaseClient';
-import { DetailedSaleTransaction, DetailedSaleItem, SalesFilterOptions } from '@/types/sales';
+import { DetailedSaleTransaction, DetailedSaleItem, DetailedReturnTransaction, SalesFilterOptions } from '@/types/sales';
 
 /**
  * Normalizes Supabase sale records into typed DetailedSaleTransaction objects.
@@ -145,5 +145,106 @@ export async function fetchTodayDetailedSales(): Promise<DetailedSaleTransaction
   return fetchDetailedSales({
     startDate: todayStart.toISOString(),
   });
+}
+
+/**
+ * Fetches today's return transactions for the active shift / POS.
+ */
+export async function fetchTodayDetailedReturns(): Promise<DetailedReturnTransaction[]> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  try {
+    const { data, error } = await supabase
+      .from('returns')
+      .select(`
+        id,
+        created_at,
+        original_sale_id,
+        cashier_id,
+        return_type,
+        total_refunded_amount,
+        refund_payment_method,
+        reason,
+        cashier:profiles (full_name),
+        return_items (
+          id,
+          variant_id,
+          quantity,
+          unit_price,
+          subtotal,
+          variant:variants (
+            sku,
+            barcode,
+            size,
+            color,
+            product:products (name)
+          )
+        )
+      `)
+      .gte('created_at', todayStart.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching today detailed returns:', error);
+      return [];
+    }
+
+    if (!data) return [];
+
+    return data.map((record: any) => {
+      let cashierName = 'Caissier inconnu';
+      if (record.cashier) {
+        if (Array.isArray(record.cashier) && record.cashier.length > 0) {
+          cashierName = record.cashier[0]?.full_name || cashierName;
+        } else if (typeof record.cashier === 'object') {
+          cashierName = record.cashier.full_name || cashierName;
+        }
+      }
+
+      const items = Array.isArray(record.return_items)
+        ? record.return_items.map((item: any) => {
+            const variant = item.variant;
+            let productName = 'Article sans nom';
+            if (variant?.product) {
+              if (Array.isArray(variant.product) && variant.product.length > 0) {
+                productName = variant.product[0]?.name || productName;
+              } else if (typeof variant.product === 'object') {
+                productName = variant.product.name || productName;
+              }
+            }
+
+            return {
+              id: item.id || '',
+              variant_id: item.variant_id,
+              productName,
+              sku: variant?.sku || undefined,
+              barcode: variant?.barcode || undefined,
+              size: variant?.size || undefined,
+              color: variant?.color || undefined,
+              quantity: Number(item.quantity) || 1,
+              unit_price: Number(item.unit_price) || 0,
+              subtotal: Number(item.subtotal) || 0,
+            };
+          })
+        : [];
+
+      return {
+        id: record.id,
+        created_at: record.created_at,
+        original_sale_id: record.original_sale_id,
+        cashier_name: cashierName,
+        cashier_id: record.cashier_id,
+        return_type: record.return_type || 'refund',
+        refund_payment_method: record.refund_payment_method || 'cash',
+        total_refunded_amount: Number(record.total_refunded_amount) || 0,
+        reason: record.reason || undefined,
+        items,
+      };
+    });
+  } catch (err) {
+    console.error('Failed to load today detailed returns:', err);
+    return [];
+  }
 }
 

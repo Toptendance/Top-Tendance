@@ -27,6 +27,7 @@ export default function ReportsAnalyticsPage() {
   const [salesAnalytics, setSalesAnalytics] = useState<any>(null);
   const [stockValuation, setStockValuation] = useState<any>(null);
   const [stockMovements, setStockMovements] = useState<any[]>([]);
+  const [returnsSummary, setReturnsSummary] = useState<{ totalRefunded: number; count: number }>({ totalRefunded: 0, count: 0 });
   const [selectedPeriod, setSelectedPeriod] = useState<'7' | '30' | '90'>('30');
 
   const fetchAnalytics = async () => {
@@ -35,13 +36,30 @@ export default function ReportsAnalyticsPage() {
       const days = parseInt(selectedPeriod, 10);
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
+      const startISO = startDate.toISOString();
+      const endISO = new Date().toISOString();
 
       // 1. Fetch sales analytics RPC
       const { data: salesData, error: sErr } = await supabase.rpc('get_sales_analytics', {
-        p_start_date: startDate.toISOString(),
-        p_end_date: new Date().toISOString(),
+        p_start_date: startISO,
+        p_end_date: endISO,
       });
       if (!sErr && salesData) setSalesAnalytics(salesData);
+
+      // Fetch returns for the same period
+      const { data: returnsData } = await supabase
+        .from('returns')
+        .select('total_refunded_amount')
+        .gte('created_at', startISO)
+        .lte('created_at', endISO);
+
+      if (returnsData) {
+        const total = returnsData.reduce((sum, r) => sum + (Number(r.total_refunded_amount) || 0), 0);
+        setReturnsSummary({
+          totalRefunded: total,
+          count: returnsData.length,
+        });
+      }
 
       // 2. Fetch stock valuation RPC
       const { data: valData, error: vErr } = await supabase.rpc('get_stock_valuation');
@@ -176,19 +194,22 @@ export default function ReportsAnalyticsPage() {
           {/* Revenue */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
-              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Chiffre d'Affaires</span>
+              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Chiffre d'Affaires Net</span>
               <div className="p-2 rounded-xl bg-blue-50 text-blue-600 shrink-0">
                 <DollarSign size={18} />
               </div>
             </div>
             <div className="mt-3 sm:mt-4">
               <p className="text-xl sm:text-2xl font-black font-mono text-gray-950">
-                {Number(salesAnalytics?.gross_revenue || 0).toFixed(3)}{' '}
+                {Math.max(0, Number(salesAnalytics?.gross_revenue || 0) - returnsSummary.totalRefunded).toFixed(3)}{' '}
                 <span className="text-xs font-normal">DT</span>
               </p>
-              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                {salesAnalytics?.sales_count || 0} ventes encaissées
-              </p>
+              <div className="text-[11px] text-gray-400 mt-0.5 sm:mt-1 flex flex-col xs:flex-row xs:justify-between">
+                <span>{salesAnalytics?.sales_count || 0} ventes encaissées</span>
+                {returnsSummary.count > 0 && (
+                  <span className="text-rose-600 font-medium">-{returnsSummary.totalRefunded.toFixed(3)} DT retours</span>
+                )}
+              </div>
             </div>
           </div>
 

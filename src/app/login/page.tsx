@@ -16,7 +16,6 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,6 +47,7 @@ function LoginForm() {
 
       const userRole = profile?.role;
 
+      router.refresh();
       if (redirectTo) {
         router.push(redirectTo);
       } else if (userRole === 'manager') {
@@ -59,7 +59,6 @@ function LoginForm() {
       }
     } catch (err: any) {
       showToast(err.message || 'Identifiants incorrects', 'error');
-    } finally {
       setLoading(false);
     }
   };
@@ -124,17 +123,6 @@ function LoginForm() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-charcoal-600">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="rounded-xs border-border text-charcoal focus:ring-charcoal"
-              />
-              Se souvenir de moi
-            </label>
-          </div>
 
           <button
             type="submit"

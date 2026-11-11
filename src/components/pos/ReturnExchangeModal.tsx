@@ -218,7 +218,8 @@ export default function ReturnExchangeModal({
             )
           `)
           .in('variant_id', matchedVariantIds)
-          .limit(10);
+          .order('sale_id', { ascending: false })
+          .limit(100);
 
         if (!siErr && saleItems && saleItems.length > 0) {
           // For each sale_item, fetch already-returned quantity from return_items
