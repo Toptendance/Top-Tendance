@@ -143,8 +143,8 @@ flowchart TD
 
 ### PHASE 3: Credit Ledger ("Carnet de Crédit / Kredy / Vente à Terme")
 
-- [ ] **3.1 Database Schema for Customer Credits**
-  - [ ] Create `customer_credits` table:
+- [x] **3.1 Database Schema for Customer Credits**
+  - [x] Create `customer_credits` table:
     ```sql
     CREATE TABLE IF NOT EXISTS public.customer_credits (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -165,7 +165,7 @@ flowchart TD
     CREATE INDEX idx_credits_phone ON public.customer_credits(customer_phone);
     CREATE INDEX idx_credits_status ON public.customer_credits(status);
     ```
-  - [ ] Create `credit_items` table (captures items taken on credit):
+  - [x] Create `credit_items` table (captures items taken on credit):
     ```sql
     CREATE TABLE IF NOT EXISTS public.credit_items (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -180,7 +180,7 @@ flowchart TD
         subtotal NUMERIC(12, 3) NOT NULL CHECK (subtotal >= 0)
     );
     ```
-  - [ ] Create `credit_payments` table (tracks repayment installments):
+  - [x] Create `credit_payments` table (tracks repayment installments):
     ```sql
     CREATE TABLE IF NOT EXISTS public.credit_payments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -193,57 +193,57 @@ flowchart TD
     );
     ```
 
-- [ ] **3.2 Atomic RPC Function: `create_credit_sale`**
-  - [ ] Create PostgreSQL function `public.create_credit_sale`:
-    - [ ] Atomically verify stock availability for each variant.
-    - [ ] Decrement variant stock (`variants.stock_quantity = stock_quantity - item.quantity`).
-    - [ ] Log `stock_movements` with `movement_type = 'credit_sale'`.
-    - [ ] Insert record into `customer_credits`.
-    - [ ] Insert items into `credit_items`.
-    - [ ] If initial deposit $> 0$, insert entry into `credit_payments` and link to daily cash register.
-    - [ ] Return JSON payload with credit ID, customer info, and ticket data.
+- [x] **3.2 Atomic RPC Function: `create_credit_sale`**
+  - [x] Create PostgreSQL function `public.create_credit_sale`:
+    - [x] Atomically verify stock availability for each variant.
+    - [x] Decrement variant stock (`variants.stock_quantity = stock_quantity - item.quantity`).
+    - [x] Log `stock_movements` with `movement_type = 'credit_sale'`.
+    - [x] Insert record into `customer_credits`.
+    - [x] Insert items into `credit_items`.
+    - [x] If initial deposit $> 0$, insert entry into `credit_payments` and link to daily cash register.
+    - [x] Return JSON payload with credit ID, customer info, and ticket data.
 
-- [ ] **3.3 Atomic RPC Function: `record_credit_payment`**
-  - [ ] Create PostgreSQL function `public.record_credit_payment`:
-    - [ ] Atomically insert installment in `credit_payments`.
-    - [ ] Subtract payment amount from `remaining_balance` in `customer_credits`.
-    - [ ] Automatically update `status`:
+- [x] **3.3 Atomic RPC Function: `record_credit_payment`**
+  - [x] Create PostgreSQL function `public.record_credit_payment`:
+    - [x] Atomically insert installment in `credit_payments`.
+    - [x] Subtract payment amount from `remaining_balance` in `customer_credits`.
+    - [x] Automatically update `status`:
       - If `remaining_balance == 0` $\rightarrow$ `'settled'` (Soldé).
       - Else $\rightarrow$ `'partially_paid'` (Partiellement réglé).
 
-- [ ] **3.4 POS Screen Integration (`/pos`)**
-  - [ ] In `src/components/pos/PaymentDrawer.tsx`:
-    - [ ] Add payment tab/option: **"Vente à Crédit / Paiement Différé"**.
-    - [ ] Customer info fields:
+- [x] **3.4 POS Screen Integration (`/pos`)**
+  - [x] In `src/components/pos/PaymentDrawer.tsx`:
+    - [x] Add payment tab/option: **"Vente à Crédit / Paiement Différé"**.
+    - [x] Customer info fields:
       - Nom complet du client (Obligatoire).
       - Numéro de téléphone (Obligatoire, 8 chiffres tunisiens avec validation).
       - Acompte versé aujourd'hui (Optionnel, défaut 0.000 DT).
       - Mode de paiement de l'acompte (Espèces / Carte bancaire).
       - Date d'échéance convenue (Optionnel).
       - Notes / Référence client.
-    - [ ] Display live summary: Montant total des articles, Acompte immédiat, **Reste à payer plus tard**.
-  - [ ] Print "Bon de Vente à Crédit / Ticket Débiteur":
+    - [x] Display live summary: Montant total des articles, Acompte immédiat, **Reste à payer plus tard**.
+  - [x] Print "Bon de Vente à Crédit / Ticket Débiteur":
     - Formatted ticket with customer name, phone, items list, amount paid today, and remaining balance due with signature line.
 
-- [ ] **3.5 Dedicated "Carnet de Crédit" (Credit Ledger) UI**
-  - [ ] Create screen accessible from both POS and Manager Dashboard:
-    - [ ] KPI Cards:
+- [x] **3.5 Dedicated "Carnet de Crédit" (Credit Ledger) UI**
+  - [x] Create screen accessible from both POS and Manager Dashboard:
+    - [x] KPI Cards:
       - Total Dettes en cours (Total Outstanding Balance).
       - Total Encaissé ce mois (Total Recovered).
       - Nombre de clients débiteurs.
-    - [ ] Search bar: Search instantly by customer phone number or customer name.
-    - [ ] Filter pills: `Tous`, `En cours (Non payé)`, `Partiellement réglé`, `Soldé`.
-    - [ ] Action "Encaisser un Règlement":
+    - [x] Search bar: Search instantly by customer phone number or customer name.
+    - [x] Filter pills: `Tous`, `En cours (Non payé)`, `Partiellement réglé`, `Soldé`.
+    - [x] Action "Encaisser un Règlement":
       - Quick payment modal: Enter amount received (e.g. 50 DT of a 120 DT debt), payment method (`Espèces` / `Carte`), cashier notes.
       - Automatically recalculates balance and updates status.
-    - [ ] Expandable item breakdown drawer showing the exact garments taken (Product name, size, color, unit price).
+    - [x] Expandable item breakdown drawer showing the exact garments taken (Product name, size, color, unit price).
 
 ---
 
 ### PHASE 4: Delivery Management ("Gestion des Livraisons & Colis")
 
-- [ ] **4.1 Database Schema for Deliveries**
-  - [ ] Create `deliveries` table:
+- [x] **4.1 Database Schema for Deliveries**
+  - [x] Create `deliveries` table:
     ```sql
     CREATE TABLE IF NOT EXISTS public.deliveries (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -268,7 +268,7 @@ flowchart TD
     CREATE INDEX idx_deliveries_tracking ON public.deliveries(tracking_number);
     CREATE INDEX idx_deliveries_status ON public.deliveries(status);
     ```
-  - [ ] Create `delivery_items` table:
+  - [x] Create `delivery_items` table:
     ```sql
     CREATE TABLE IF NOT EXISTS public.delivery_items (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -283,37 +283,37 @@ flowchart TD
     );
     ```
 
-- [ ] **4.2 Stock Management on Shipping & Returns**
-  - [ ] Create atomic RPC `create_delivery_order`:
+- [x] **4.2 Stock Management on Shipping & Returns**
+  - [x] Create atomic RPC `create_delivery_order`:
     - Decrements `variants.stock_quantity`.
     - Logs `stock_movements` with `movement_type = 'delivery_shipment'`.
-  - [ ] Create atomic RPC `process_delivery_return`:
+  - [x] Create atomic RPC `process_delivery_return`:
     - Restores `variants.stock_quantity` if package is returned/undelivered.
     - Logs `stock_movements` with `movement_type = 'delivery_return'`.
 
-- [ ] **4.3 Delivery Management Screen (`/inventory/deliveries` or Delivery Tab)**
-  - [ ] Pipeline Kanban or filtered list:
+- [x] **4.3 Delivery Management Screen (`/inventory/deliveries` or Delivery Tab)**
+  - [x] Pipeline Kanban or filtered list:
     - 📦 `En préparation`
     - 🚚 `Expédié / En cours de route`
     - ✅ `Livré & Encaissé`
     - ↩️ `Retour Colis`
-  - [ ] "Nouvelle Expédition / Colis" modal:
+  - [x] "Nouvelle Expédition / Colis" modal:
     - Customer details (Nom, Téléphone, Adresse, Gouvernorat parmi les 24).
     - Sélection des articles (scan code-barres ou sélecteur de variantes).
     - Frais de port (ex: 7.000 DT ou Gratuit) + Total Contre-Remboursement (COD).
     - Choix du transporteur (Aramex, Yalidine, Coursier interne).
-  - [ ] Imprimer "Bordereau de Livraison / Expédition" (Shipping Slip with Barcode).
-  - [ ] Quick status update buttons: "Marquer comme Livré & Payé", "Marquer comme Colis Retourné".
+  - [x] Imprimer "Bordereau de Livraison / Expédition" (Shipping Slip with Barcode).
+  - [x] Quick status update buttons: "Marquer comme Livré & Payé", "Marquer comme Colis Retourné".
 
 ---
 
 ### PHASE 5: Security, RLS & Testing Verification
 
-- [ ] **5.1 Row Level Security (RLS) Policies**
-  - [ ] Enable RLS on all new tables:
+- [x] **5.1 Row Level Security (RLS) Policies**
+  - [x] Enable RLS on all new tables:
     - `customer_credits`, `credit_items`, `credit_payments`
     - `deliveries`, `delivery_items`
-  - [ ] Policies:
+  - [x] Policies:
     - Cashiers and Managers can read, insert, and update credits and deliveries.
     - Regular customers can only read deliveries linked to their phone or user account.
     - Costs and profit margins remain strictly manager-only.

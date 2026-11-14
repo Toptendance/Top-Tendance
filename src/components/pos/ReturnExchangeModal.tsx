@@ -84,6 +84,7 @@ export default function ReturnExchangeModal({
       .from('sales')
       .select(`
         id,
+        customer_phone,
         total_amount,
         discount_amount,
         final_amount,
@@ -379,6 +380,70 @@ export default function ReturnExchangeModal({
         variant_id: i.variant_id,
         quantity: i.quantity,
       }));
+
+      // Guard: an article still tied to an unpaid credit must never trigger a
+      // cash/card refund. It has to be returned from the Credit Ledger instead.
+      if (returnType === 'refund') {
+        const variantIds = Array.from(
+          new Set(itemsToReturnList.map((i: any) => i.variant_id))
+        );
+
+        const { data: creditItemsData, error: creditItemsErr } = await supabase
+          .from('credit_items')
+          .select('id, credit_id, variant_id, quantity, returned_quantity')
+          .in('variant_id', variantIds);
+
+        if (creditItemsErr) throw creditItemsErr;
+
+        if (creditItemsData && creditItemsData.length > 0) {
+          const creditIds = Array.from(
+            new Set(creditItemsData.map((ci: any) => ci.credit_id))
+          );
+
+          const { data: activeCredits, error: creditsErr } = await supabase
+            .from('customer_credits')
+            .select('id, customer_name, customer_phone, status, remaining_balance')
+            .in('id', creditIds)
+            .in('status', ['pending', 'partially_paid'])
+            .gt('remaining_balance', 0);
+
+          if (creditsErr) throw creditsErr;
+
+          const activeCreditMap = new Map<string, any>(
+            (activeCredits || []).map((c: any) => [c.id, c])
+          );
+          const normalizePhone = (value: string | null | undefined) =>
+            (value || '').replace(/\D/g, '');
+          const salePhone = normalizePhone(saleData.customer_phone);
+
+          const conflictingItem = creditItemsData.find((ci: any) => {
+            const credit = activeCreditMap.get(ci.credit_id);
+            if (!credit) return false;
+
+            const remainingQty =
+              Number(ci.quantity) - Number(ci.returned_quantity || 0);
+            if (remainingQty <= 0) return false;
+
+            // Only block on a confident match: same customer phone + same
+            // variant. This avoids blocking unrelated cash-sale returns.
+            return salePhone
+              ? normalizePhone(credit.customer_phone) === salePhone
+              : false;
+          });
+
+          if (conflictingItem) {
+            const credit = activeCreditMap.get(conflictingItem.credit_id);
+            setErrorMsg(
+              `Cet article est lié à une vente à crédit non réglée` +
+                (credit?.customer_name ? ` (client : ${credit.customer_name})` : '') +
+                `. Aucun remboursement en espèces n'est autorisé. ` +
+                `Utilisez le Carnet de Crédit > « Retourner cet article ».`
+            );
+            playBeep('error');
+            return;
+          }
+        }
+      }
 
       const { data, error } = await supabase.rpc('process_return_exchange', {
         p_original_sale_id: saleData.id,

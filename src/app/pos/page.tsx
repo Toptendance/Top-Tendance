@@ -6,10 +6,13 @@ import { playBeep } from '@/utils/posAudio';
 import PaymentDrawer from '@/components/pos/PaymentDrawer';
 import ProductSearchDrawer from '@/components/pos/ProductSearchDrawer';
 import ReceiptModal from '@/components/pos/ReceiptModal';
+import CreditReceiptModal from '@/components/pos/CreditReceiptModal';
+import CreditLedger from '@/components/pos/CreditLedger';
 import MobileScannerModal from '@/components/pos/MobileScannerModal';
 import DailySalesSummary, { DailySalesData } from '@/components/pos/DailySalesSummary';
 import ZReportModal from '@/components/pos/ZReportModal';
 import ReturnExchangeModal from '@/components/pos/ReturnExchangeModal';
+import Link from 'next/link';
 import {
   Barcode,
   Search,
@@ -22,7 +25,10 @@ import {
   ShoppingBag,
   AlertCircle,
   Camera,
-  RotateCcw
+  RotateCcw,
+  Wallet,
+  Boxes,
+  TrendingUp
 } from 'lucide-react';
 
 interface CartItem {
@@ -71,8 +77,10 @@ export default function PosPage() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isZReportOpen, setIsZReportOpen] = useState(false);
   const [isReturnOpen, setIsReturnOpen] = useState(false);
+  const [isCreditLedgerOpen, setIsCreditLedgerOpen] = useState(false);
   const [returnInitialSaleId, setReturnInitialSaleId] = useState<string | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<any>(null);
+  const [completedCreditReceipt, setCompletedCreditReceipt] = useState<any>(null);
   const [activeExchangeCredit, setActiveExchangeCredit] = useState<{ amount: number; saleId?: string } | null>(null);
 
   // Daily Sales Summary state
@@ -86,6 +94,10 @@ export default function PosPage() {
     returnsCount: 0,
     cashRefunds: 0,
     cardRefunds: 0,
+    creditPaymentsTotal: 0,
+    creditPaymentsCount: 0,
+    creditCashPayments: 0,
+    creditCardPayments: 0,
     netTotal: 0,
     netCash: 0,
     netCard: 0,
@@ -204,7 +216,7 @@ export default function PosPage() {
       todayStart.setHours(0, 0, 0, 0);
       const isoToday = todayStart.toISOString();
 
-      const [salesRes, returnsRes] = await Promise.all([
+      const [salesRes, returnsRes, creditPaymentsRes] = await Promise.all([
         supabase
           .from('sales')
           .select('id, final_amount, payment_method, created_at')
@@ -212,6 +224,10 @@ export default function PosPage() {
         supabase
           .from('returns')
           .select('id, total_refunded_amount, refund_payment_method, return_type, created_at')
+          .gte('created_at', isoToday),
+        supabase
+          .from('credit_payments')
+          .select('id, amount, payment_method, created_at')
           .gte('created_at', isoToday),
       ]);
 
@@ -241,6 +257,18 @@ export default function PosPage() {
         else if (r.refund_payment_method === 'card') cardRef += refAmt;
       }
 
+      let creditPaymentsTotal = 0;
+      let creditCashPayments = 0;
+      let creditCardPayments = 0;
+      const creditPaymentsData = creditPaymentsRes.data || [];
+
+      for (const p of creditPaymentsData) {
+        const amt = Number(p.amount) || 0;
+        creditPaymentsTotal += amt;
+        if (p.payment_method === 'cash') creditCashPayments += amt;
+        else if (p.payment_method === 'card') creditCardPayments += amt;
+      }
+
       setDailySales({
         grossTotal: gross,
         salesCount: salesData.length,
@@ -251,9 +279,13 @@ export default function PosPage() {
         returnsCount: returnsData.length,
         cashRefunds: cashRef,
         cardRefunds: cardRef,
-        netTotal: gross - refunds,
-        netCash: cash - cashRef,
-        netCard: card - cardRef,
+        creditPaymentsTotal,
+        creditPaymentsCount: creditPaymentsData.length,
+        creditCashPayments,
+        creditCardPayments,
+        netTotal: gross - refunds + creditPaymentsTotal,
+        netCash: cash - cashRef + creditCashPayments,
+        netCard: card - cardRef + creditCardPayments,
       });
     } catch (err) {
       console.error('Failed to fetch daily sales summary:', err);
@@ -285,6 +317,14 @@ export default function PosPage() {
           fetchDailySales();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'credit_payments' },
+        () => {
+          // Credit deposits and repayments physically enter the cash drawer
+          fetchDailySales();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -294,13 +334,13 @@ export default function PosPage() {
 
   // Persistent focus on scanner input
   useEffect(() => {
-    if (currentUser && !isSearchOpen && !isPaymentOpen && !completedReceipt) {
+    if (currentUser && !isSearchOpen && !isPaymentOpen && !completedReceipt && !completedCreditReceipt && !isCreditLedgerOpen) {
       const timer = setTimeout(() => {
         barcodeInputRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [currentUser, isSearchOpen, isPaymentOpen, completedReceipt]);
+  }, [currentUser, isSearchOpen, isPaymentOpen, completedReceipt, completedCreditReceipt, isCreditLedgerOpen]);
 
   // Global hotkeys handler (F2 focus, F9 pay, Esc close)
   useEffect(() => {
@@ -317,11 +357,12 @@ export default function PosPage() {
         if (isSearchOpen) setIsSearchOpen(false);
         if (isPaymentOpen) setIsPaymentOpen(false);
         if (completedReceipt) setCompletedReceipt(null);
+        if (completedCreditReceipt) setCompletedCreditReceipt(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart.length, isPaymentOpen, isSearchOpen, completedReceipt]);
+  }, [cart.length, isPaymentOpen, isSearchOpen, completedReceipt, completedCreditReceipt]);
 
   // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -570,13 +611,85 @@ export default function PosPage() {
     discount,
     cashTendered,
     changeDue,
+    creditData,
   }: {
-    paymentMethod: 'cash' | 'card' | 'split';
+    paymentMethod: 'cash' | 'card' | 'split' | 'credit';
     discount: number;
     cashTendered?: number;
     changeDue?: number;
+    creditData?: {
+      customerName: string;
+      customerPhone: string;
+      depositAmount: number;
+      depositMethod: 'cash' | 'card';
+      dueDate: string;
+      notes: string;
+    };
   }) => {
-    // Calculate raw cart total
+    // ── Credit sale path ──────────────────────────────────────────────────
+    if (paymentMethod === 'credit' && creditData) {
+      const pItems = cart.map((item) => ({
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        product_name: item.name,
+        sku: item.sku,
+        size: item.size ?? null,
+        color: item.color ?? null,
+      }));
+
+      const { data, error } = await supabase.rpc('create_credit_sale', {
+        p_customer_name: creditData.customerName,
+        p_customer_phone: creditData.customerPhone,
+        p_items: pItems,
+        p_deposit_amount: creditData.depositAmount,
+        p_deposit_method: creditData.depositAmount > 0 ? creditData.depositMethod : null,
+        p_due_date: creditData.dueDate || null,
+        p_notes: creditData.notes || null,
+        p_cashier_id: currentUser?.id ?? null,
+      });
+
+      if (error) throw new Error(error.message);
+
+      const totalAmount = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+
+      setCart([]);
+      setIsPaymentOpen(false);
+      setActiveExchangeCredit(null);
+
+      setCompletedCreditReceipt({
+        creditId: data?.credit_id ?? 'N/A',
+        customerName: creditData.customerName,
+        customerPhone: creditData.customerPhone,
+        totalAmount,
+        depositAmount: creditData.depositAmount,
+        depositMethod: creditData.depositMethod,
+        remainingBalance: totalAmount - creditData.depositAmount,
+        dueDate: creditData.dueDate,
+        notes: creditData.notes,
+        items: cart,
+        createdAt: new Date().toISOString(),
+        cashierName: userProfile?.full_name || currentUser?.email || '',
+      });
+
+      // Update in-memory stock cache
+      for (const item of pItems) {
+        for (const [key, cached] of variantsCacheRef.current.entries()) {
+          if (cached.id === item.variant_id) {
+            variantsCacheRef.current.set(key, {
+              ...cached,
+              stock_quantity: Math.max(0, cached.stock_quantity - item.quantity),
+            });
+          }
+        }
+      }
+
+      // A credit sale may include a cash/card deposit: refresh the daily cash.
+      fetchDailySales();
+      return;
+    }
+
+    // ── Regular sale path ─────────────────────────────────────────────────
     const rawTotal = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
     // If an exchange credit is active, combine it into total effective deduction
@@ -712,6 +825,25 @@ export default function PosPage() {
           <span className="text-[10px] sm:text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-mono">
             V1.0
           </span>
+          <div className="flex items-center gap-1.5 ml-1 sm:ml-2 border-l border-gray-700 pl-2 sm:pl-3">
+            <Link
+              href="/inventory"
+              className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-300 hover:text-white bg-gray-800/80 hover:bg-gray-700 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md transition"
+              title="Accéder à la Gestion Boutique"
+            >
+              <Boxes size={13} className="text-gray-300 shrink-0" />
+              <span className="hidden sm:inline">Gestion Boutique</span>
+              <span className="sm:hidden">Boutique</span>
+            </Link>
+            <Link
+              href="/reports"
+              className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-300 hover:text-white bg-gray-800/80 hover:bg-gray-700 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md transition"
+              title="Accéder aux Rapports et Statistiques"
+            >
+              <TrendingUp size={13} className="text-gray-300 shrink-0" />
+              <span className="hidden sm:inline">Rapports</span>
+            </Link>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-6">
@@ -754,6 +886,16 @@ export default function PosPage() {
                 >
                   <RotateCcw size={15} />
                   <span>Retour / Échange</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreditLedgerOpen(true)}
+                  className="text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-3 py-2 sm:py-1.5 rounded-lg transition min-h-[38px] sm:min-h-0 flex items-center gap-1.5"
+                  title="Carnet de Crédit — Ventes à terme"
+                >
+                  <Wallet size={15} />
+                  <span className="hidden sm:inline">Carnet Crédit</span>
+                  <span className="sm:hidden">Crédit</span>
                 </button>
                 <button
                   type="button"
@@ -970,6 +1112,11 @@ export default function PosPage() {
         onClose={() => setCompletedReceipt(null)}
       />
 
+      <CreditReceiptModal
+        receipt={completedCreditReceipt}
+        onClose={() => setCompletedCreditReceipt(null)}
+      />
+
       {/* Live Daily Sales Summary Bar */}
       <DailySalesSummary
         stats={dailySales}
@@ -994,6 +1141,25 @@ export default function PosPage() {
         cashierName={userProfile?.full_name || currentUser.email}
         cashierRole={userProfile?.role || 'cashier'}
       />
+
+      {/* Carnet de Crédit Drawer */}
+      {isCreditLedgerOpen && (
+        <CreditLedger
+          onClose={() => setIsCreditLedgerOpen(false)}
+          currentUserId={currentUser?.id}
+          onCreditReturned={(variantId, quantity) => {
+            for (const [key, cached] of variantsCacheRef.current.entries()) {
+              if (cached.id === variantId) {
+                variantsCacheRef.current.set(key, {
+                  ...cached,
+                  stock_quantity: cached.stock_quantity + quantity,
+                });
+              }
+            }
+          }}
+          onCreditPaymentRecorded={fetchDailySales}
+        />
+      )}
 
       {/* Return & Exchange Modal */}
       <ReturnExchangeModal

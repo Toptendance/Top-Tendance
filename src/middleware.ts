@@ -70,11 +70,11 @@ export async function middleware(request: NextRequest) {
 
     const userRole = profile.role;
 
-    // /inventory and /reports require manager role
+    // /inventory and /reports require cashier or manager role
     if (pathname.startsWith('/inventory') || pathname.startsWith('/reports')) {
-      if (userRole !== 'manager') {
+      if (userRole !== 'manager' && userRole !== 'cashier') {
         const url = request.nextUrl.clone();
-        url.pathname = userRole === 'cashier' ? '/pos' : '/account';
+        url.pathname = '/account';
         return NextResponse.redirect(url);
       }
     }

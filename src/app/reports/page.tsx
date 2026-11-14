@@ -22,6 +22,7 @@ import Link from 'next/link';
 import DetailedSalesJournal from '@/components/reports/DetailedSalesJournal';
 
 export default function ReportsAnalyticsPage() {
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [activeMainTab, setActiveMainTab] = useState<'overview' | 'journal'>('overview');
   const [loading, setLoading] = useState(true);
   const [salesAnalytics, setSalesAnalytics] = useState<any>(null);
@@ -96,7 +97,25 @@ export default function ReportsAnalyticsPage() {
 
   useEffect(() => {
     fetchAnalytics();
+
+    // Fetch user profile to identify cashier vs manager role
+    async function loadUserProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        if (profile) {
+          setUserProfile(profile);
+        }
+      }
+    }
+    loadUserProfile();
   }, [selectedPeriod]);
+
+  const isCashier = userProfile?.role === 'cashier';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans select-none">
@@ -190,7 +209,7 @@ export default function ReportsAnalyticsPage() {
         ) : (
           <>
             {/* KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${isCashier ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-3 sm:gap-4`}>
           {/* Revenue */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
             <div className="flex justify-between items-start">
@@ -213,43 +232,47 @@ export default function ReportsAnalyticsPage() {
             </div>
           </div>
 
-          {/* Net Profit */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
-            <div className="flex justify-between items-start">
-              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Bénéfice Net Réalisé</span>
-              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
-                <TrendingUp size={18} />
+          {/* Net Profit (Manager Only) */}
+          {!isCashier && (
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
+              <div className="flex justify-between items-start">
+                <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Bénéfice Net Réalisé</span>
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                  <TrendingUp size={18} />
+                </div>
+              </div>
+              <div className="mt-3 sm:mt-4">
+                <p className="text-xl sm:text-2xl font-black font-mono text-emerald-600">
+                  {Number(salesAnalytics?.net_profit || 0).toFixed(3)}{' '}
+                  <span className="text-xs font-normal">DT</span>
+                </p>
+                <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
+                  Coût marchandises: {Number(salesAnalytics?.total_cost || 0).toFixed(3)} DT
+                </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4">
-              <p className="text-xl sm:text-2xl font-black font-mono text-emerald-600">
-                {Number(salesAnalytics?.net_profit || 0).toFixed(3)}{' '}
-                <span className="text-xs font-normal">DT</span>
-              </p>
-              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                Coût marchandises: {Number(salesAnalytics?.total_cost || 0).toFixed(3)} DT
-              </p>
-            </div>
-          </div>
+          )}
 
-          {/* Stock Valuation at Cost */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
-            <div className="flex justify-between items-start">
-              <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Valeur Stock (Achat)</span>
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
-                <Package size={18} />
+          {/* Stock Valuation at Cost (Manager Only) */}
+          {!isCashier && (
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
+              <div className="flex justify-between items-start">
+                <span className="text-[11px] sm:text-xs font-bold uppercase text-gray-500">Valeur Stock (Achat)</span>
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+                  <Package size={18} />
+                </div>
+              </div>
+              <div className="mt-3 sm:mt-4">
+                <p className="text-xl sm:text-2xl font-black font-mono text-gray-950">
+                  {Number(stockValuation?.total_stock_valuation_cost || 0).toFixed(3)}{' '}
+                  <span className="text-xs font-normal">DT</span>
+                </p>
+                <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
+                  {stockValuation?.total_stock_units || 0} pièces en réserve
+                </p>
               </div>
             </div>
-            <div className="mt-3 sm:mt-4">
-              <p className="text-xl sm:text-2xl font-black font-mono text-gray-950">
-                {Number(stockValuation?.total_stock_valuation_cost || 0).toFixed(3)}{' '}
-                <span className="text-xs font-normal">DT</span>
-              </p>
-              <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                {stockValuation?.total_stock_units || 0} pièces en réserve
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Stock Valuation at Retail */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border shadow-xs flex flex-col justify-between">
@@ -265,7 +288,9 @@ export default function ReportsAnalyticsPage() {
                 <span className="text-xs font-normal">DT</span>
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                Marge moyenne estimée: {stockValuation?.estimated_margin_percent || 0}%
+                {!isCashier && stockValuation?.estimated_margin_percent != null
+                  ? `Marge moyenne estimée: ${stockValuation.estimated_margin_percent}%`
+                  : `${stockValuation?.total_stock_units || 0} pièces en stock`}
               </p>
             </div>
           </div>

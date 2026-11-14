@@ -38,6 +38,8 @@ export function Header() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
+  const isStaff = userProfile?.role === 'manager' || userProfile?.role === 'cashier';
+
   useEffect(() => {
     async function getSession() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -125,34 +127,62 @@ export function Header() {
 
             {/* Desktop Navigation Links (Left) */}
             <nav className="hidden lg:flex items-center gap-8">
-              <Link
-                href="/women"
-                className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-charcoal-500 transition py-1 relative group"
-              >
-                Femme
-                <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
-              </Link>
-              <Link
-                href="/kids"
-                className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-kids-peach transition py-1 relative group"
-              >
-                Enfant
-                <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-kids-peach transition-all duration-300 group-hover:w-full" />
-              </Link>
-              <Link
-                href="/search?tag=new"
-                className="text-xs uppercase tracking-widest font-semibold text-charcoal-700 hover:text-charcoal transition py-1 relative group"
-              >
-                Nouveautés
-                <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
-              </Link>
-              <Link
-                href="/search?tag=bestseller"
-                className="text-xs uppercase tracking-widest font-semibold text-charcoal-700 hover:text-charcoal transition py-1 relative group"
-              >
-                Bestsellers
-                <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
-              </Link>
+              {!isStaff ? (
+                <>
+                  <Link
+                    href="/women"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-charcoal-500 transition py-1 relative group"
+                  >
+                    Femme
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                  <Link
+                    href="/kids"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-kids-peach transition py-1 relative group"
+                  >
+                    Enfant
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-kids-peach transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                  <Link
+                    href="/search?tag=new"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal-700 hover:text-charcoal transition py-1 relative group"
+                  >
+                    Nouveautés
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                  <Link
+                    href="/search?tag=bestseller"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal-700 hover:text-charcoal transition py-1 relative group"
+                  >
+                    Bestsellers
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/pos"
+                    className="text-xs uppercase tracking-widest font-bold text-amber-900 bg-amber-50 hover:bg-amber-100/80 px-3 py-1.5 rounded-lg border border-amber-200/80 transition flex items-center gap-1.5"
+                  >
+                    <CreditCard size={14} className="text-amber-700" />
+                    Caisse POS
+                  </Link>
+                  <Link
+                    href="/inventory"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-charcoal-500 transition py-1 relative group"
+                  >
+                    Gestion Stock & Boutique
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                  <Link
+                    href="/reports"
+                    className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-charcoal-500 transition py-1 relative group"
+                  >
+                    Rapports & Ventes
+                    <span className="absolute left-0 bottom-0 w-0 h-[1.5px] bg-charcoal transition-all duration-300 group-hover:w-full" />
+                  </Link>
+                </>
+              )}
             </nav>
 
             {/* Brand Logo (Center) */}
@@ -239,36 +269,34 @@ export function Header() {
                         </>
                       ) : (
                         <>
-                          {/* Client or general account link */}
-                          <Link
-                            href="/account"
-                            onClick={() => setIsAccountMenuOpen(false)}
-                            className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
-                          >
-                            <User size={14} /> Mon Espace Client
-                          </Link>
-
-                          {/* Cashier or Manager POS quick link */}
-                          {(userProfile?.role === 'cashier' || userProfile?.role === 'manager') && (
+                          {/* Client account link (Only for non-staff customers) */}
+                          {!isStaff && (
                             <Link
-                              href="/pos"
+                              href="/account"
                               onClick={() => setIsAccountMenuOpen(false)}
                               className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
                             >
-                              <CreditCard size={14} /> Caisse Enregistreuse (POS)
+                              <User size={14} /> Mon Espace Client
                             </Link>
                           )}
 
-                          {/* Manager-only Links */}
-                          {userProfile?.role === 'manager' && (
+                          {/* Cashier or Manager quick links */}
+                          {isStaff && (
                             <>
+                              <Link
+                                href="/pos"
+                                onClick={() => setIsAccountMenuOpen(false)}
+                                className="flex items-center gap-2 px-4 py-2 hover:bg-amber-50 text-amber-900 font-semibold transition"
+                              >
+                                <CreditCard size={14} className="text-amber-700" /> Caisse Enregistreuse (POS)
+                              </Link>
                               <div className="border-t border-border/50 my-1" />
                               <Link
                                 href="/inventory"
                                 onClick={() => setIsAccountMenuOpen(false)}
                                 className="flex items-center gap-2 px-4 py-2 hover:bg-cream text-charcoal font-medium transition"
                               >
-                                <Boxes size={14} /> Gestion Stock & Inventaire
+                                <Boxes size={14} /> Gestion Stock & Boutique
                               </Link>
                               <Link
                                 href="/reports"

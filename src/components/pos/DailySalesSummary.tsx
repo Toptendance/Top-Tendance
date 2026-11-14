@@ -33,6 +33,10 @@ export interface DailySalesData {
   returnsCount: number;
   cashRefunds: number;
   cardRefunds: number;
+  creditPaymentsTotal: number;
+  creditPaymentsCount: number;
+  creditCashPayments: number;
+  creditCardPayments: number;
   netTotal: number;
   netCash: number;
   netCard: number;
@@ -220,11 +224,16 @@ export default function DailySalesSummary({
 
           {/* Payment breakdown preview with Cash Net */}
           <div className="hidden md:flex items-center gap-3 text-xs text-gray-300">
-            <span className="flex items-center gap-1 font-mono" title={`Espèces net en tiroir (Reçu: ${formatPrice(stats.cashTotal)}, Remboursé: ${formatPrice(stats.cashRefunds || 0)})`}>
+            <span className="flex items-center gap-1 font-mono" title={`Espèces net en tiroir (Ventes: ${formatPrice(stats.cashTotal)}, Crédits: ${formatPrice(stats.creditCashPayments || 0)}, Remboursé: ${formatPrice(stats.cashRefunds || 0)})`}>
               <Banknote size={13} className="text-amber-400" />
               <span className="text-amber-300 font-bold">{formatPrice(stats.netCash ?? stats.cashTotal)}</span>
               {(stats.cashRefunds || 0) > 0 && (
                 <span className="text-[10px] text-amber-500/80 font-normal">net</span>
+              )}
+              {(stats.creditCashPayments || 0) > 0 && (
+                <span className="text-[10px] text-emerald-400/90 font-normal">
+                  +{formatPrice(stats.creditCashPayments)} crédits
+                </span>
               )}
             </span>
             <span className="flex items-center gap-1 font-mono">
@@ -369,8 +378,9 @@ export default function DailySalesSummary({
                 <div className="text-xl sm:text-2xl font-black text-emerald-900 font-mono">
                   {formatPrice(stats.netTotal ?? (stats.grossTotal - (stats.refundsTotal || 0)))}
                 </div>
-                <div className="text-[11px] text-emerald-700 mt-1 font-medium flex items-center justify-between">
+                <div className="text-[11px] text-emerald-700 mt-1 font-medium flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span>Ventes brutes: {formatPrice(stats.grossTotal)}</span>
+                  <span>Crédits: +{formatPrice(stats.creditPaymentsTotal || 0)}</span>
                   <span>Retours: -{formatPrice(stats.refundsTotal || 0)}</span>
                 </div>
               </div>
@@ -412,8 +422,13 @@ export default function DailySalesSummary({
                 <div className="text-lg sm:text-xl font-black text-amber-700 font-mono">
                   {formatPrice(stats.netCash ?? stats.cashTotal)}
                 </div>
-                <div className="text-[11px] text-gray-400 mt-1 font-medium flex justify-between">
-                  <span>+{formatPrice(stats.cashTotal)}</span>
+                <div className="text-[11px] text-gray-400 mt-1 font-medium flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                  <span>+{formatPrice(stats.cashTotal)} ventes</span>
+                  {(stats.creditCashPayments || 0) > 0 && (
+                    <span className="text-emerald-600">
+                      +{formatPrice(stats.creditCashPayments)} crédits
+                    </span>
+                  )}
                   <span className="text-rose-500">-{formatPrice(stats.cashRefunds || 0)}</span>
                 </div>
               </div>
@@ -427,8 +442,13 @@ export default function DailySalesSummary({
                 <div className="text-lg sm:text-xl font-black text-blue-700 font-mono">
                   {formatPrice(stats.netCard ?? stats.cardTotal)}
                 </div>
-                <div className="text-[11px] text-gray-400 mt-1 font-medium flex justify-between">
-                  <span>+{formatPrice(stats.cardTotal)}</span>
+                <div className="text-[11px] text-gray-400 mt-1 font-medium flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                  <span>+{formatPrice(stats.cardTotal)} ventes</span>
+                  {(stats.creditCardPayments || 0) > 0 && (
+                    <span className="text-emerald-600">
+                      +{formatPrice(stats.creditCardPayments)} crédits
+                    </span>
+                  )}
                   <span className="text-rose-500">-{formatPrice(stats.cardRefunds || 0)}</span>
                 </div>
               </div>

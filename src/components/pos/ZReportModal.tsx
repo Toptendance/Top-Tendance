@@ -108,8 +108,14 @@ export default function ZReportModal({
                 </span>
                 <span className="font-mono font-bold">-{formatPrice(stats.refundsTotal || 0)}</span>
               </div>
+              <div className="flex justify-between items-center text-sm text-emerald-700">
+                <span className="flex items-center gap-1.5">
+                  Encaissements Crédits ({stats.creditPaymentsCount || 0}):
+                </span>
+                <span className="font-mono font-bold">+{formatPrice(stats.creditPaymentsTotal || 0)}</span>
+              </div>
               <div className="pt-1.5 border-t border-gray-200 flex justify-between items-center text-sm font-bold text-emerald-700">
-                <span>Chiffre Net en Caisse:</span>
+                <span>Chiffre Net Encaissé:</span>
                 <span className="font-mono text-base font-black">
                   {formatPrice(stats.netTotal ?? (stats.grossTotal - (stats.refundsTotal || 0)))}
                 </span>
@@ -118,29 +124,41 @@ export default function ZReportModal({
               <div className="pt-2 border-t border-gray-200 space-y-2">
                 <div className="flex justify-between items-center text-xs text-gray-600">
                   <span className="flex items-center gap-1.5">
-                    <Banknote size={14} className="text-amber-600" /> Espèces Encaissées:
+                    <Banknote size={14} className="text-amber-600" /> Espèces Ventes Directes:
                   </span>
                   <span className="font-mono font-semibold text-gray-800">+{formatPrice(stats.cashTotal)}</span>
                 </div>
-                {(stats.cashRefunds || 0) > 0 && (
-                  <div className="flex justify-between items-center text-xs text-rose-600">
-                    <span className="flex items-center gap-1.5 pl-5">
-                      ↳ Espèces Remboursées:
-                    </span>
-                    <span className="font-mono font-semibold">-{formatPrice(stats.cashRefunds || 0)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center text-xs text-emerald-700">
+                  <span className="flex items-center gap-1.5 pl-5">
+                    ↳ Espèces Encaissements Crédits:
+                  </span>
+                  <span className="font-mono font-semibold">+{formatPrice(stats.creditCashPayments || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs text-rose-600">
+                  <span className="flex items-center gap-1.5 pl-5">
+                    ↳ Moins Remboursements Réels (Espèces):
+                  </span>
+                  <span className="font-mono font-semibold">-{formatPrice(stats.cashRefunds || 0)}</span>
+                </div>
                 <div className="flex justify-between items-center text-xs text-amber-900 font-bold bg-amber-50/80 px-2 py-1 rounded">
-                  <span>Espèces Nettes Réelles:</span>
+                  <span>Total Espèces Physiques en Caisse:</span>
                   <span className="font-mono">{formatPrice(netCash)}</span>
                 </div>
 
                 <div className="flex justify-between items-center text-xs text-gray-600 pt-1">
                   <span className="flex items-center gap-1.5">
-                    <CreditCard size={14} className="text-blue-600" /> Cartes / TPE Encaissées:
+                    <CreditCard size={14} className="text-blue-600" /> Cartes Ventes Directes:
                   </span>
                   <span className="font-mono font-semibold text-gray-800">+{formatPrice(stats.cardTotal)}</span>
                 </div>
+                {(stats.creditCardPayments || 0) > 0 && (
+                  <div className="flex justify-between items-center text-xs text-emerald-700">
+                    <span className="flex items-center gap-1.5 pl-5">
+                      ↳ Cartes Encaissements Crédits:
+                    </span>
+                    <span className="font-mono font-semibold">+{formatPrice(stats.creditCardPayments || 0)}</span>
+                  </div>
+                )}
                 {(stats.cardRefunds || 0) > 0 && (
                   <div className="flex justify-between items-center text-xs text-rose-600">
                     <span className="flex items-center gap-1.5 pl-5">

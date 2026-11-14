@@ -1,8 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Banknote, Split, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, CreditCard, Banknote, Split, CheckCircle2, Clock } from 'lucide-react';
 import { playBeep } from '@/utils/posAudio';
+
+export interface PaymentDrawerCartItem {
+  variant_id: string;
+  sku: string;
+  name: string;
+  size: string | null;
+  color: string | null;
+  unit_price: number;
+  quantity: number;
+}
 
 interface PaymentDrawerProps {
   isOpen: boolean;
@@ -11,11 +21,23 @@ interface PaymentDrawerProps {
   exchangeCredit?: number;
   onClose: () => void;
   onConfirmPayment: (paymentData: {
-    paymentMethod: 'cash' | 'card' | 'split';
+    paymentMethod: 'cash' | 'card' | 'split' | 'credit';
     discount: number;
     cashTendered?: number;
     changeDue?: number;
+    creditData?: {
+      customerName: string;
+      customerPhone: string;
+      depositAmount: number;
+      depositMethod: 'cash' | 'card';
+      dueDate: string;
+      notes: string;
+    };
   }) => Promise<void>;
+}
+
+function isValidTunisianPhone(phone: string): boolean {
+  return /^[2345789]\d{7}$/.test(phone.trim());
 }
 
 export default function PaymentDrawer({
@@ -26,42 +48,58 @@ export default function PaymentDrawer({
   onClose,
   onConfirmPayment,
 }: PaymentDrawerProps) {
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'split'>('cash');
+  // ── Regular payment state ───────────────────────────────────────────────
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'split' | 'credit'>('cash');
   const [discountInput, setDiscountInput] = useState<string>(
     initialDiscount > 0 ? initialDiscount.toFixed(3) : '0'
   );
   const [cashTenderedInput, setCashTenderedInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const isCashCustomizedRef = React.useRef(false);
+  const isCashCustomizedRef = useRef(false);
 
+  // ── Credit payment state ────────────────────────────────────────────────
+  const [creditCustomerName, setCreditCustomerName] = useState('');
+  const [creditCustomerPhone, setCreditCustomerPhone] = useState('');
+  const [creditDepositInput, setCreditDepositInput] = useState('0');
+  const [creditDepositMethod, setCreditDepositMethod] = useState<'cash' | 'card'>('cash');
+  const [creditDueDate, setCreditDueDate] = useState('');
+  const [creditNotes, setCreditNotes] = useState('');
+
+  // ── Derived values ──────────────────────────────────────────────────────
   const discount = Math.max(0, parseFloat(discountInput) || 0);
   const effectiveTotal = Math.max(0, totalAmount - exchangeCredit);
   const finalAmount = Math.max(0, effectiveTotal - discount);
   const cashTendered = parseFloat(cashTenderedInput) || 0;
   const changeDue = Math.max(0, cashTendered - finalAmount);
 
-  // Handle discount change with smart sync for cashTenderedInput
+  const creditDeposit = Math.max(0, parseFloat(creditDepositInput) || 0);
+  const creditRemaining = Math.max(0, totalAmount - creditDeposit);
+
   const handleDiscountChange = (newDiscountStr: string) => {
     setDiscountInput(newDiscountStr);
     const newDiscount = Math.max(0, parseFloat(newDiscountStr) || 0);
     const newFinal = Math.max(0, effectiveTotal - newDiscount);
-
-    // If user hasn't typed an arbitrary tender amount, keep tender aligned with final net
     if (!isCashCustomizedRef.current) {
       setCashTenderedInput(newFinal.toFixed(3));
     }
   };
 
-  // Reset and initialize fields only when the drawer opens
   useEffect(() => {
     if (isOpen) {
       isCashCustomizedRef.current = false;
+      setPaymentMethod('cash');
       const initDisc = initialDiscount > 0 ? initialDiscount.toFixed(3) : '0';
       setDiscountInput(initDisc);
       const net = Math.max(0, totalAmount - exchangeCredit - (parseFloat(initDisc) || 0));
       setCashTenderedInput(net.toFixed(3));
       setErrorMsg(null);
+      setCreditCustomerName('');
+      setCreditCustomerPhone('');
+      setCreditDepositInput('0');
+      setCreditDepositMethod('cash');
+      setCreditDueDate('');
+      setCreditNotes('');
     }
   }, [isOpen, totalAmount, exchangeCredit, initialDiscount]);
 
@@ -71,12 +109,52 @@ export default function PaymentDrawer({
     e.preventDefault();
     setErrorMsg(null);
 
+    if (paymentMethod === 'credit') {
+      if (!creditCustomerName.trim()) {
+        setErrorMsg('Le nom du client est obligatoire');
+        playBeep('error');
+        return;
+      }
+      if (!isValidTunisianPhone(creditCustomerPhone)) {
+        setErrorMsg('Numéro de téléphone invalide (8 chiffres tunisiens requis)');
+        playBeep('error');
+        return;
+      }
+      if (creditDeposit > totalAmount) {
+        setErrorMsg("L'acompte ne peut pas dépasser le montant total");
+        playBeep('error');
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        await onConfirmPayment({
+          paymentMethod: 'credit',
+          discount: 0,
+          creditData: {
+            customerName: creditCustomerName.trim(),
+            customerPhone: creditCustomerPhone.trim(),
+            depositAmount: creditDeposit,
+            depositMethod: creditDepositMethod,
+            dueDate: creditDueDate,
+            notes: creditNotes.trim(),
+          },
+        });
+        playBeep('success');
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Erreur lors de la vente à crédit');
+        playBeep('error');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (discount > totalAmount) {
       setErrorMsg('La remise ne peut pas dépasser le montant total');
       playBeep('error');
       return;
     }
-
     if (paymentMethod === 'cash' && cashTendered < finalAmount) {
       setErrorMsg('Le montant reçu en espèces est insuffisant');
       playBeep('error');
@@ -117,132 +195,302 @@ export default function PaymentDrawer({
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between mt-4 sm:mt-6">
-          <div className="space-y-4 sm:space-y-6">
-            {/* Total Recap Card */}
-            <div className="bg-gray-50 p-3.5 sm:p-4 rounded-xl border border-gray-200 space-y-2">
-              <div className="flex justify-between text-xs sm:text-sm text-gray-600">
-                <span>Sous-total:</span>
-                <span className="font-mono font-medium">{totalAmount.toFixed(3)} DT</span>
-              </div>
-              {exchangeCredit > 0 && (
-                <div className="flex justify-between text-xs sm:text-sm text-indigo-700 font-semibold bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
-                  <span>Avoir d'échange appliqué:</span>
-                  <span className="font-mono">-{exchangeCredit.toFixed(3)} DT</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center text-xs sm:text-sm">
-                <span className="text-gray-600 font-medium">Remise (DT):</span>
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  value={discountInput}
-                  onChange={(e) => handleDiscountChange(e.target.value)}
-                  className="w-28 text-right font-mono p-1.5 border rounded-lg bg-white text-sm focus:ring-1 focus:ring-black"
-                />
-              </div>
-              <div className="flex justify-between text-lg sm:text-xl font-extrabold text-gray-950 pt-2 border-t">
-                <span>Net à Payer:</span>
-                <span className="font-mono text-emerald-600">{finalAmount.toFixed(3)} DT</span>
-              </div>
-            </div>
+          <div className="space-y-4 sm:space-y-5">
 
-            {/* Payment Method Selector */}
+            {/* ── Payment Method Tabs ── */}
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                 Mode de Paiement
               </label>
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
+                  className={`p-2 sm:p-2.5 border rounded-xl flex flex-col items-center gap-1 transition min-h-[52px] justify-center ${
                     paymentMethod === 'cash'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <Banknote size={18} />
-                  <span className="text-[11px] sm:text-xs font-semibold">Espèces</span>
+                  <Banknote size={16} />
+                  <span className="text-[10px] sm:text-xs font-semibold">Espèces</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('card')}
-                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
+                  className={`p-2 sm:p-2.5 border rounded-xl flex flex-col items-center gap-1 transition min-h-[52px] justify-center ${
                     paymentMethod === 'card'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <CreditCard size={18} />
-                  <span className="text-[11px] sm:text-xs font-semibold">Carte</span>
+                  <CreditCard size={16} />
+                  <span className="text-[10px] sm:text-xs font-semibold">Carte</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('split')}
-                  className={`p-2.5 sm:p-3 border rounded-xl flex flex-col items-center gap-1.5 transition min-h-[56px] justify-center ${
+                  className={`p-2 sm:p-2.5 border rounded-xl flex flex-col items-center gap-1 transition min-h-[52px] justify-center ${
                     paymentMethod === 'split'
                       ? 'border-black bg-black text-white'
                       : 'border-gray-200 hover:border-gray-400 text-gray-700'
                   }`}
                 >
-                  <Split size={18} />
-                  <span className="text-[11px] sm:text-xs font-semibold">Mixte</span>
+                  <Split size={16} />
+                  <span className="text-[10px] sm:text-xs font-semibold">Mixte</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('credit')}
+                  className={`p-2 sm:p-2.5 border rounded-xl flex flex-col items-center gap-1 transition min-h-[52px] justify-center ${
+                    paymentMethod === 'credit'
+                      ? 'border-orange-500 bg-orange-500 text-white'
+                      : 'border-orange-200 hover:border-orange-400 text-orange-700'
+                  }`}
+                >
+                  <Clock size={16} />
+                  <span className="text-[10px] sm:text-xs font-semibold leading-tight text-center">Crédit</span>
                 </button>
               </div>
             </div>
 
-            {/* Cash Tendered Calculation */}
-            {paymentMethod === 'cash' && (
-              <div className="bg-emerald-50 border border-emerald-200 p-3.5 sm:p-4 rounded-xl space-y-3">
+            {/* ── CREDIT panel ── */}
+            {paymentMethod === 'credit' && (
+              <div className="space-y-4">
+                {/* Live credit summary */}
+                <div className="bg-orange-50 border border-orange-200 p-3.5 rounded-xl space-y-2">
+                  <p className="text-xs font-bold text-orange-800 uppercase tracking-wider">
+                    Vente à Crédit / Paiement Différé
+                  </p>
+                  <div className="flex justify-between text-xs sm:text-sm text-gray-600">
+                    <span>Montant total articles:</span>
+                    <span className="font-mono font-semibold">{totalAmount.toFixed(3)} DT</span>
+                  </div>
+                  <div className="flex justify-between text-xs sm:text-sm text-emerald-700">
+                    <span>Acompte versé aujourd'hui:</span>
+                    <span className="font-mono font-semibold">
+                      {creditDeposit > 0 ? `-${creditDeposit.toFixed(3)} DT` : '0.000 DT'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-base sm:text-lg font-extrabold text-orange-700 pt-2 border-t border-orange-200">
+                    <span>Reste à payer plus tard:</span>
+                    <span className="font-mono">{creditRemaining.toFixed(3)} DT</span>
+                  </div>
+                </div>
+
+                {/* Customer name */}
                 <div>
-                  <label className="block text-xs font-semibold text-emerald-950 mb-1">
-                    Espèces Remises par le Client (DT):
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Nom complet du client <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={creditCustomerName}
+                    onChange={(e) => setCreditCustomerName(e.target.value)}
+                    placeholder="Ex: Mohamed Ben Ali"
+                    className="w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Customer phone */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Numéro de téléphone <span className="text-red-500">*</span>
+                    <span className="font-normal text-gray-400 ml-1">(8 chiffres)</span>
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-sm font-mono text-gray-500 bg-gray-100 px-2.5 py-2.5 rounded-lg border border-gray-200 shrink-0">
+                      +216
+                    </span>
+                    <input
+                      type="tel"
+                      value={creditCustomerPhone}
+                      onChange={(e) =>
+                        setCreditCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 8))
+                      }
+                      placeholder="2X XXX XXX"
+                      className={`flex-1 px-3 py-2.5 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
+                        creditCustomerPhone.length === 8
+                          ? isValidTunisianPhone(creditCustomerPhone)
+                            ? 'border-emerald-400 focus:ring-emerald-400'
+                            : 'border-red-400 focus:ring-red-400'
+                          : 'border-gray-200 focus:ring-orange-400'
+                      }`}
+                      maxLength={8}
+                    />
+                  </div>
+                </div>
+
+                {/* Deposit amount */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Acompte versé aujourd'hui (DT)
+                    <span className="font-normal text-gray-400 ml-1">(optionnel, défaut 0.000 DT)</span>
                   </label>
                   <input
                     type="number"
                     step="0.001"
                     min="0"
-                    value={cashTenderedInput}
-                    onChange={(e) => {
-                      isCashCustomizedRef.current = true;
-                      setCashTenderedInput(e.target.value);
-                    }}
-                    autoFocus
-                    className="w-full text-xl sm:text-2xl font-mono font-bold text-right p-2.5 sm:p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    max={totalAmount}
+                    value={creditDepositInput}
+                    onChange={(e) => setCreditDepositInput(e.target.value)}
+                    className="w-full px-3 py-2.5 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
                   />
                 </div>
 
-                {/* Quick Cash Buttons */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {[10, 20, 50, 100].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setCashTenderedInput(val.toFixed(3))}
-                      className="px-2.5 py-1 text-xs font-mono font-semibold bg-white border border-emerald-300 rounded hover:bg-emerald-100 transition text-emerald-900"
-                    >
-                      {val} DT
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setCashTenderedInput(finalAmount.toFixed(3))}
-                    className="px-2.5 py-1 text-xs font-mono font-semibold bg-emerald-600 text-white rounded hover:bg-emerald-700 transition"
-                  >
-                    Montant Exact
-                  </button>
+                {/* Deposit method — only shown when deposit > 0 */}
+                {creditDeposit > 0 && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Mode de paiement de l'acompte
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCreditDepositMethod('cash')}
+                        className={`py-2 border rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition ${
+                          creditDepositMethod === 'cash'
+                            ? 'border-black bg-black text-white'
+                            : 'border-gray-200 hover:border-gray-400 text-gray-700'
+                        }`}
+                      >
+                        <Banknote size={14} /> Espèces
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCreditDepositMethod('card')}
+                        className={`py-2 border rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition ${
+                          creditDepositMethod === 'card'
+                            ? 'border-black bg-black text-white'
+                            : 'border-gray-200 hover:border-gray-400 text-gray-700'
+                        }`}
+                      >
+                        <CreditCard size={14} /> Carte bancaire
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Due date */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Date d'échéance convenue
+                    <span className="font-normal text-gray-400 ml-1">(optionnel)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={creditDueDate}
+                    onChange={(e) => setCreditDueDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
                 </div>
 
-                <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
-                  <span className="font-semibold text-emerald-900 text-xs sm:text-sm">Monnaie à rendre:</span>
-                  <span className="font-mono text-xl sm:text-2xl font-extrabold text-emerald-800">
-                    {changeDue.toFixed(3)} DT
-                  </span>
+                {/* Notes */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Notes / Référence client
+                    <span className="font-normal text-gray-400 ml-1">(optionnel)</span>
+                  </label>
+                  <textarea
+                    value={creditNotes}
+                    onChange={(e) => setCreditNotes(e.target.value)}
+                    placeholder="Ex: Paiement prévu fin du mois, connue de Madame Fatma..."
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                  />
                 </div>
               </div>
+            )}
+
+            {/* ── REGULAR payment panels ── */}
+            {paymentMethod !== 'credit' && (
+              <>
+                {/* Total Recap Card */}
+                <div className="bg-gray-50 p-3.5 sm:p-4 rounded-xl border border-gray-200 space-y-2">
+                  <div className="flex justify-between text-xs sm:text-sm text-gray-600">
+                    <span>Sous-total:</span>
+                    <span className="font-mono font-medium">{totalAmount.toFixed(3)} DT</span>
+                  </div>
+                  {exchangeCredit > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-indigo-700 font-semibold bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                      <span>Avoir d'échange appliqué:</span>
+                      <span className="font-mono">-{exchangeCredit.toFixed(3)} DT</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
+                    <span className="text-gray-600 font-medium">Remise (DT):</span>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={discountInput}
+                      onChange={(e) => handleDiscountChange(e.target.value)}
+                      className="w-28 text-right font-mono p-1.5 border rounded-lg bg-white text-sm focus:ring-1 focus:ring-black"
+                    />
+                  </div>
+                  <div className="flex justify-between text-lg sm:text-xl font-extrabold text-gray-950 pt-2 border-t">
+                    <span>Net à Payer:</span>
+                    <span className="font-mono text-emerald-600">{finalAmount.toFixed(3)} DT</span>
+                  </div>
+                </div>
+
+                {/* Cash Tendered */}
+                {paymentMethod === 'cash' && (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3.5 sm:p-4 rounded-xl space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-emerald-950 mb-1">
+                        Espèces Remises par le Client (DT):
+                      </label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={cashTenderedInput}
+                        onChange={(e) => {
+                          isCashCustomizedRef.current = true;
+                          setCashTenderedInput(e.target.value);
+                        }}
+                        autoFocus
+                        className="w-full text-xl sm:text-2xl font-mono font-bold text-right p-2.5 sm:p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {[10, 20, 50, 100].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setCashTenderedInput(val.toFixed(3))}
+                          className="px-2.5 py-1 text-xs font-mono font-semibold bg-white border border-emerald-300 rounded hover:bg-emerald-100 transition text-emerald-900"
+                        >
+                          {val} DT
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCashTenderedInput(finalAmount.toFixed(3))}
+                        className="px-2.5 py-1 text-xs font-mono font-semibold bg-emerald-600 text-white rounded hover:bg-emerald-700 transition"
+                      >
+                        Montant Exact
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
+                      <span className="font-semibold text-emerald-900 text-xs sm:text-sm">
+                        Monnaie à rendre:
+                      </span>
+                      <span className="font-mono text-xl sm:text-2xl font-extrabold text-emerald-800">
+                        {changeDue.toFixed(3)} DT
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {errorMsg && (
@@ -252,6 +500,7 @@ export default function PaymentDrawer({
             )}
           </div>
 
+          {/* ── Action buttons ── */}
           <div className="pt-4 sm:pt-6 border-t flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 mt-4">
             <button
               type="button"
@@ -261,23 +510,40 @@ export default function PaymentDrawer({
             >
               Annuler (Esc)
             </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full sm:flex-1 bg-black text-white py-3.5 sm:py-3 rounded-xl hover:bg-gray-800 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg min-h-[46px]"
-            >
-              {isSubmitting ? (
-                <span>Validation en cours...</span>
-              ) : (
-                <>
-                  <CheckCircle2 size={18} /> Valider ({finalAmount.toFixed(3)} DT)
-                </>
-              )}
-            </button>
+
+            {paymentMethod === 'credit' ? (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full sm:flex-1 bg-orange-500 text-white py-3.5 sm:py-3 rounded-xl hover:bg-orange-600 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg min-h-[46px]"
+              >
+                {isSubmitting ? (
+                  <span>Enregistrement en cours...</span>
+                ) : (
+                  <>
+                    <Clock size={18} />
+                    Valider Vente à Crédit ({totalAmount.toFixed(3)} DT)
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full sm:flex-1 bg-black text-white py-3.5 sm:py-3 rounded-xl hover:bg-gray-800 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg min-h-[46px]"
+              >
+                {isSubmitting ? (
+                  <span>Validation en cours...</span>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} /> Valider ({finalAmount.toFixed(3)} DT)
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </form>
       </div>
     </div>
   );
 }
-

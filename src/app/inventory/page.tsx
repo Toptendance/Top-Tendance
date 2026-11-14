@@ -6,6 +6,8 @@ import BarcodeTagModal from '@/components/pos/BarcodeTagModal';
 import DeliveryReceivingModal from '@/components/pos/DeliveryReceivingModal';
 import MobileScannerModal from '@/components/pos/MobileScannerModal';
 import CashierManagementSection from '@/components/manager/CashierManagementSection';
+import CreditLedger from '@/components/pos/CreditLedger';
+import DeliveryManagementSection from '@/components/pos/DeliveryManagementSection';
 import { useToast } from '@/context/ToastContext';
 import {
   Boxes,
@@ -30,7 +32,9 @@ import {
   CheckSquare,
   Square,
   Printer,
-  Users
+  Users,
+  Wallet,
+  Truck
 } from 'lucide-react';
 import { generateUniqueBarcode, generateVariantSku } from '@/utils/barcodeGenerator';
 import Link from 'next/link';
@@ -60,7 +64,8 @@ interface ProductWithVariants {
 
 export default function InventoryDashboardPage() {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'inventory' | 'cashiers'>('inventory');
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'cashiers' | 'credits' | 'deliveries'>('inventory');
   const [products, setProducts] = useState<ProductWithVariants[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,7 +269,29 @@ export default function InventoryDashboardPage() {
 
   useEffect(() => {
     fetchInventory();
+
+    // Fetch user profile to detect cashier role
+    async function loadUserProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        if (profile) {
+          setUserProfile(profile);
+          // If cashier is on cashiers tab, force switch to inventory
+          if (profile.role === 'cashier') {
+            setActiveTab((current) => (current === 'cashiers' ? 'inventory' : current));
+          }
+        }
+      }
+    }
+    loadUserProfile();
   }, []);
+
+  const isCashier = userProfile?.role === 'cashier';
 
   // Compute metrics
   const allVariants = products.flatMap((p) =>
@@ -474,6 +501,10 @@ export default function InventoryDashboardPage() {
   // Handle Create Product & Variant
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCashier) {
+      showToast('Action non autorisée pour le profil caissier.', 'error');
+      return;
+    }
     setFormError(null);
     setIsSkuDuplicate(false);
     try {
@@ -613,6 +644,10 @@ export default function InventoryDashboardPage() {
   // Category Management Handlers
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCashier) {
+      showToast('Action non autorisée pour le profil caissier.', 'error');
+      return;
+    }
     if (!newCatName.trim()) return;
     setCatActionLoading(true);
     setCatError(null);
@@ -663,6 +698,10 @@ export default function InventoryDashboardPage() {
   };
 
   const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (isCashier) {
+      showToast('Action non autorisée pour le profil caissier.', 'error');
+      return;
+    }
     setCatActionLoading(true);
     setCatError(null);
     try {
@@ -700,6 +739,11 @@ export default function InventoryDashboardPage() {
   // Handle Soft Delete Product
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
+    if (isCashier) {
+      showToast('Action non autorisée pour le profil caissier.', 'error');
+      setProductToDelete(null);
+      return;
+    }
 
     setIsDeleting(true);
     const targetId = productToDelete.id;
@@ -763,15 +807,37 @@ export default function InventoryDashboardPage() {
           >
             <Boxes size={14} /> Stock & Articles
           </button>
+          {!isCashier && (
+            <button
+              onClick={() => setActiveTab('cashiers')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'cashiers'
+                  ? 'bg-white text-gray-900 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <Users size={14} /> Équipe & Caissiers
+            </button>
+          )}
           <button
-            onClick={() => setActiveTab('cashiers')}
+            onClick={() => setActiveTab('credits')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-              activeTab === 'cashiers'
+              activeTab === 'credits'
                 ? 'bg-white text-gray-900 shadow-2xs'
                 : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Users size={14} /> Équipe & Caissiers
+            <Wallet size={14} /> Carnet de Crédit
+          </button>
+          <button
+            onClick={() => setActiveTab('deliveries')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              activeTab === 'deliveries'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Truck size={14} /> Expéditions & Colis
           </button>
         </div>
 
@@ -783,19 +849,25 @@ export default function InventoryDashboardPage() {
             >
               <PackagePlus size={15} /> <span>Réception</span>
             </button>
-            <button
-              onClick={() => setIsProductModalOpen(true)}
-              className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px]"
-            >
-              <Plus size={15} /> <span>Nouveau Produit</span>
-            </button>
+            {!isCashier && (
+              <button
+                onClick={() => setIsProductModalOpen(true)}
+                className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px]"
+              >
+                <Plus size={15} /> <span>Nouveau Produit</span>
+              </button>
+            )}
           </div>
         )}
       </header>
 
       {/* Main Content Area */}
       <main className="flex-1 p-3.5 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
-        {activeTab === 'cashiers' ? (
+        {activeTab === 'deliveries' ? (
+          <DeliveryManagementSection />
+        ) : activeTab === 'credits' ? (
+          <CreditLedger />
+        ) : activeTab === 'cashiers' ? (
           <CashierManagementSection />
         ) : (
           <>
@@ -1082,13 +1154,15 @@ export default function InventoryDashboardPage() {
                             <Barcode size={14} /> Étiquette
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setProductToDelete({ id: product.id, name: product.name })}
-                          className="px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1 min-h-[38px]"
-                        >
-                          <Trash2 size={14} /> Supprimer
-                        </button>
+                        {!isCashier && (
+                          <button
+                            type="button"
+                            onClick={() => setProductToDelete({ id: product.id, name: product.name })}
+                            className="px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1 min-h-[38px]"
+                          >
+                            <Trash2 size={14} /> Supprimer
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1232,14 +1306,16 @@ export default function InventoryDashboardPage() {
                                 <Barcode size={13} /> Étiquette
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => setProductToDelete({ id: product.id, name: product.name })}
-                              title="Supprimer ce produit"
-                              className="px-2.5 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
-                            >
-                              <Trash2 size={13} /> Supprimer
-                            </button>
+                            {!isCashier && (
+                              <button
+                                type="button"
+                                onClick={() => setProductToDelete({ id: product.id, name: product.name })}
+                                title="Supprimer ce produit"
+                                className="px-2.5 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Trash2 size={13} /> Supprimer
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1784,39 +1860,41 @@ export default function InventoryDashboardPage() {
               </div>
             )}
 
-            {/* New Category Form */}
-            <form onSubmit={handleCreateCategory} className="mt-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 block">
-                + Nouvelle Catégorie
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  required
-                  placeholder="Nom (ex: Accessoires)"
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  className="w-full text-xs p-2.5 border rounded-lg bg-white"
-                />
-                <input
-                  type="text"
-                  placeholder="Description (optionnel)"
-                  value={newCatDesc}
-                  onChange={(e) => setNewCatDesc(e.target.value)}
-                  className="w-full text-xs p-2.5 border rounded-lg bg-white"
-                />
-              </div>
-              <div className="flex justify-end pt-1">
-                <button
-                  type="submit"
-                  disabled={catActionLoading || !newCatName.trim()}
-                  className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 disabled:opacity-50 transition flex items-center gap-1.5"
-                >
-                  <Plus size={14} />
-                  <span>Ajouter</span>
-                </button>
-              </div>
-            </form>
+            {/* New Category Form (Managers Only) */}
+            {!isCashier && (
+              <form onSubmit={handleCreateCategory} className="mt-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 block">
+                  + Nouvelle Catégorie
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nom (ex: Accessoires)"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    className="w-full text-xs p-2.5 border rounded-lg bg-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Description (optionnel)"
+                    value={newCatDesc}
+                    onChange={(e) => setNewCatDesc(e.target.value)}
+                    className="w-full text-xs p-2.5 border rounded-lg bg-white"
+                  />
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={catActionLoading || !newCatName.trim()}
+                    className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 disabled:opacity-50 transition flex items-center gap-1.5"
+                  >
+                    <Plus size={14} />
+                    <span>Ajouter</span>
+                  </button>
+                </div>
+              </form>
+            )}
 
             {/* Categories List */}
             <div className="mt-4 flex-1 overflow-y-auto space-y-2 pr-1">
@@ -1895,28 +1973,32 @@ export default function InventoryDashboardPage() {
                           </>
                         ) : (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCatId(c.id);
-                                setEditingCatName(c.name);
-                                setEditingCatDesc(c.description || '');
-                                setCatError(null);
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition"
-                              title="Renommer"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCategory(c.id, c.name)}
-                              disabled={catActionLoading}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                              title="Supprimer"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {!isCashier && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCatId(c.id);
+                                  setEditingCatName(c.name);
+                                  setEditingCatDesc(c.description || '');
+                                  setCatError(null);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition"
+                                title="Renommer"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                            )}
+                            {!isCashier && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCategory(c.id, c.name)}
+                                disabled={catActionLoading}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

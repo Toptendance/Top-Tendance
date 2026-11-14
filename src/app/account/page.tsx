@@ -93,6 +93,12 @@ export default function AccountPage() {
         .single();
       setUserProfile(profile);
 
+      // Staff safeguard: Cashiers and Managers don't use the customer account page
+      if (profile?.role === 'cashier' || profile?.role === 'manager') {
+        router.replace('/pos');
+        return;
+      }
+
       // Fetch customer addresses
       const { data: addrData } = await supabase
         .from('customer_addresses')
@@ -187,6 +193,16 @@ export default function AccountPage() {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-charcoal" />
+      </div>
+    );
+  }
+
+  // Prevent flash of customer account UI for staff before redirect finishes
+  if (userProfile?.role === 'cashier' || userProfile?.role === 'manager') {
+    return (
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-charcoal" />
+        <p className="text-xs text-charcoal-500 font-medium">Redirection vers l'espace caisse & gestion...</p>
       </div>
     );
   }
