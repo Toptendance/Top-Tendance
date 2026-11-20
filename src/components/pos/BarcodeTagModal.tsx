@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import JsBarcode from 'jsbarcode';
-import { Printer, X, Sliders, CheckSquare, Trash2, Layers, Plus, Minus } from 'lucide-react';
+import { Printer, X, Sliders, CheckSquare, Trash2, Layers, Plus, Minus, RotateCcw, AlertTriangle } from 'lucide-react';
 
 export interface BarcodePrintItem {
   variantId?: string;
@@ -48,15 +48,28 @@ export function SingleLabelItem({
   useEffect(() => {
     if (svgRef.current && barcode && !isTest) {
       try {
-        JsBarcode(svgRef.current, barcode, {
+        const cleanBarcode = barcode.trim();
+        const barcodeLength = cleanBarcode.length;
+        // Dynamically optimize bar width so both short and long barcodes fit perfectly without clipping
+        const barWidth = barcodeLength > 16 ? 1.05 : barcodeLength > 13 ? 1.2 : 1.35;
+
+        JsBarcode(svgRef.current, cleanBarcode, {
           format: 'CODE128',
-          width: 1.35,
-          height: 38, // at least 10mm (38px ~ 10mm)
+          width: barWidth,
+          height: 40, // ~10-11mm height for fast laser/camera scanner decoding
           displayValue: true,
           fontSize: 9,
-          textMargin: 1,
+          font: 'monospace',
+          textMargin: 2,
           margin: 0,
         });
+
+        // Set viewBox for responsive vector scaling without distortion or clipping
+        const widthAttr = svgRef.current.getAttribute('width');
+        const heightAttr = svgRef.current.getAttribute('height');
+        if (widthAttr && heightAttr) {
+          svgRef.current.setAttribute('viewBox', `0 0 ${widthAttr} ${heightAttr}`);
+        }
       } catch (err) {
         console.error('JsBarcode render error in SingleLabelItem:', err);
       }
@@ -71,7 +84,7 @@ export function SingleLabelItem({
           <span className="text-sm font-black font-mono text-gray-900">#{cellIndex}</span>
           <span className="text-[7.5px] text-gray-400">52.5 × 29.7 mm</span>
         </div>
-        <span className="text-[7.5px] text-gray-400">CALIBRATION CANON G2410</span>
+        <span className="text-[7.5px] text-gray-400 font-bold">CALIBRATION CANON G2010</span>
       </div>
     );
   }
@@ -79,35 +92,30 @@ export function SingleLabelItem({
   return (
     <div
       className="w-[52.5mm] h-[29.7mm] bg-white flex flex-col justify-between items-center text-center select-none box-border overflow-hidden"
-      style={{
-        paddingTop: '2mm',
-        paddingBottom: '2.5mm',
-        paddingLeft: '3.5mm',
-        paddingRight: '3.5mm',
-      }}
+      style={{ padding: '1.5mm 2.5mm' }}
     >
       {/* Product Name & SKU / Variant */}
       <div className="w-full leading-tight">
-        <p className="text-[9px] font-black uppercase tracking-tight text-black truncate w-full">
+        <p className="text-[9px] font-black uppercase tracking-tight text-black truncate w-full" title={productName}>
           {productName}
         </p>
         <div className="flex justify-between items-center text-[7.5px] text-black px-0.5 font-mono">
-          <span className="truncate max-w-[50%]">{sku}</span>
-          <span className="truncate max-w-[50%] text-right font-medium">
+          <span className="truncate max-w-[55%] font-bold text-gray-800">{sku}</span>
+          <span className="truncate max-w-[45%] text-right font-semibold text-gray-900">
             {size ? `T: ${size}` : ''} {color ? `• ${color}` : ''}
           </span>
         </div>
       </div>
 
-      {/* Code128 Vector Barcode SVG with quiet zones */}
-      <div className="w-full flex justify-center items-center px-1 my-auto">
-        <svg ref={svgRef} className="max-w-full" />
+      {/* Code128 Vector Barcode SVG with guaranteed quiet zones */}
+      <div className="w-full flex justify-center items-center overflow-hidden">
+        <svg ref={svgRef} className="w-full h-auto block" style={{ maxHeight: '14mm' }} />
       </div>
 
       {/* Brand & Price */}
-      <div className="w-full flex justify-between items-baseline px-0.5 border-t border-gray-200 pt-0.5 leading-none">
-        <span className="text-[7.5px] font-bold uppercase tracking-wider text-black">Top Tendance</span>
-        <span className="text-[10px] font-black text-black font-mono">
+      <div className="w-full flex justify-between items-baseline px-0.5 border-t border-gray-300 pt-0.5 leading-none">
+        <span className="text-[7.5px] font-extrabold uppercase tracking-wider text-black">Top Tendance</span>
+        <span className="text-[10px] font-black text-black font-mono tracking-tight">
           {Number(selling_price).toFixed(3)} DT
         </span>
       </div>
@@ -130,6 +138,7 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
   useEffect(() => {
     if (!variant) {
       setItems([]);
+      setStartPosition(1);
       return;
     }
     const rawList = Array.isArray(variant) ? variant : [variant];
@@ -138,6 +147,7 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
       printQty: Math.max(1, item.quantity ?? 1),
     }));
     setItems(initialList);
+    setStartPosition(1);
   }, [variant]);
 
   // Load saved calibration offsets from localStorage on mount
@@ -167,6 +177,17 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
       localStorage.setItem('herma_a4_offset_y', val.toString());
     } catch (e) {
       console.warn('Could not save offset_y:', e);
+    }
+  };
+
+  const handleResetOffsets = () => {
+    setOffsetX(0);
+    setOffsetY(0);
+    try {
+      localStorage.removeItem('herma_a4_offset_x');
+      localStorage.removeItem('herma_a4_offset_y');
+    } catch (e) {
+      console.warn('Could not reset offsets:', e);
     }
   };
 
@@ -273,77 +294,14 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      {/* Strict A4 Sticker Sheet (4 columns x 10 rows) print stylesheet */}
-      <style jsx global>{`
-        @media print {
-          /* Hide everything in the document by default */
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body * {
-            visibility: hidden !important;
-          }
-
-          /* Show only the designated A4 print sheets container */
-          #print-sheets-container,
-          #print-sheets-container * {
-            visibility: visible !important;
-          }
-
-          #print-sheets-container {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 210mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
-          .a4-print-sheet {
-            width: 210mm !important;
-            height: 297mm !important;
-            display: grid !important;
-            grid-template-columns: repeat(4, 52.5mm) !important;
-            grid-template-rows: repeat(10, 29.7mm) !important;
-            page-break-after: always !important;
-            break-after: page !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
-          .a4-print-sheet:last-child {
-            page-break-after: avoid !important;
-            break-after: avoid !important;
-          }
-
-          .a4-print-cell {
-            width: 52.5mm !important;
-            height: 29.7mm !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            background: #ffffff !important;
-          }
-
-          @page {
-            size: 210mm 297mm !important;
-            margin: 0mm !important;
-          }
-        }
-      `}</style>
-
+    <div className="barcode-modal-wrapper fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
       {/* Off-screen / Print-only container */}
       <div
         id="print-sheets-container"
         className="hidden print:block"
         style={{
-          transform: `translate(${offsetX}mm, ${offsetY}mm)`,
+          left: `${offsetX / 1.1428}mm`,
+          top: `${offsetY / 1.1428}mm`,
         }}
       >
         {isTestPage ? (
@@ -516,24 +474,70 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="block text-[11px] font-bold text-gray-700">
-                Commencer à l'étiquette n° (1 - 40)
+              <label className="block text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+                Commencer à la case (1 - 40)
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${startPosition === 1 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                  #{startPosition} {startPosition === 1 ? '(Haut-Gauche)' : ''}
+                </span>
               </label>
-              <span className="text-[10px] text-gray-400">Pour réutiliser une feuille entamée</span>
+              {startPosition > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStartPosition(1)}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition"
+                  title="Remettre au début (case 1)"
+                >
+                  <RotateCcw size={11} /> Remettre à la case 1
+                </button>
+              )}
             </div>
-            <input
-              type="number"
-              min="1"
-              max="40"
-              value={startPosition}
-              onChange={(e) => {
-                const val = parseInt(e.target.value) || 1;
-                setStartPosition(Math.min(40, Math.max(1, val)));
-              }}
-              className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-black font-semibold text-gray-900"
-            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="1"
+                max="40"
+                value={startPosition}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  setStartPosition(Math.min(40, Math.max(1, val)));
+                }}
+                className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-black font-semibold text-gray-900 font-mono"
+              />
+              {startPosition > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStartPosition(1)}
+                  className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold shrink-0 transition"
+                >
+                  Case 1
+                </button>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-400 mt-1 block">
+              Laissez à 1 pour une feuille neuve, ou choisissez une case pour réutiliser une feuille entamée
+            </span>
           </div>
         </div>
+
+        {/* Warning Alert if startPosition > 1 */}
+        {startPosition > 1 && (
+          <div className="w-full mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start justify-between gap-2 text-amber-900 animate-in fade-in duration-150">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-tight">
+                <span className="font-bold block">Décalage actif (Planche entamée) :</span>
+                Les cases <b className="font-mono">1</b> à <b className="font-mono">{startPosition - 1}</b> seront laissées vides. L'impression démarrera à la case <b className="font-mono">#{startPosition}</b>.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStartPosition(1)}
+              className="text-[11px] font-bold underline hover:text-amber-950 shrink-0 self-center"
+            >
+              Annuler
+            </button>
+          </div>
+        )}
 
         {/* 4x10 Sheet Visualizer preview */}
         <div className="w-full mb-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
@@ -549,6 +553,7 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
           <div className="grid grid-cols-4 gap-1 p-1.5 bg-white border border-gray-200 rounded-lg max-w-[200px] mx-auto shadow-inner">
             {Array.from({ length: 40 }).map((_, idx) => {
               const cellNum = idx + 1;
+              const isStartCell = cellNum === startPosition;
               const isSkipped = cellNum < startPosition;
               const labelIndex = cellNum - startPosition;
               const isFilledOnFirstPage = !isSkipped && labelIndex < totalLabels;
@@ -567,6 +572,10 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
                       : `Position ${cellNum} (vide)`
                   }
                   className={`h-4 text-[8px] flex items-center justify-center rounded font-mono font-bold transition-all ${
+                    isStartCell && cellNum > 1
+                      ? 'ring-2 ring-amber-500 scale-105 z-10 '
+                      : ''
+                  }${
                     isSkipped
                       ? 'bg-gray-200 text-gray-400 line-through opacity-70'
                       : assignedItem
@@ -598,47 +607,90 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
         </div>
 
         {/* Calibration offset toggle & controls */}
-        <div className="w-full mb-4">
-          <button
-            type="button"
-            onClick={() => setShowSettings(!showSettings)}
-            className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 hover:text-black transition"
-          >
-            <Sliders size={13} />
-            <span>{showSettings ? 'Masquer le réglage du décalage (calibration)' : 'Ajuster le décalage imprimante (mm)'}</span>
-          </button>
+        <div className="w-full mb-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 hover:text-black transition"
+            >
+              <Sliders size={13} />
+              <span>{showSettings ? 'Masquer le réglage du décalage (calibration)' : 'Ajuster le décalage imprimante (mm)'}</span>
+            </button>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${offsetX !== 0 || offsetY !== 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-gray-100 text-gray-600'}`}>
+                X: {offsetX > 0 ? `+${offsetX}` : offsetX}mm | Y: {offsetY > 0 ? `+${offsetY}` : offsetY}mm
+              </span>
+              {(offsetX !== 0 || offsetY !== 0) && (
+                <button
+                  type="button"
+                  onClick={handleResetOffsets}
+                  className="text-[10px] text-red-600 hover:text-red-800 font-bold underline"
+                  title="Remettre le décalage à 0 mm, 0 mm"
+                >
+                  Reset (0,0)
+                </button>
+              )}
+            </div>
+          </div>
 
           {showSettings && (
-            <div className="mt-2 p-3 bg-amber-50/60 border border-amber-200 rounded-xl grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-bold text-amber-900 mb-1">
-                  Décalage X (mm, horizontal)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={offsetX}
-                  onChange={(e) => handleOffsetXChange(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2 py-1 text-xs bg-white border border-amber-300 rounded font-mono text-gray-900"
-                />
+            <div className="mt-2 p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-2.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">
+                    Décalage X (mm, horizontal)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={offsetX}
+                    onChange={(e) => handleOffsetXChange(parseFloat(e.target.value) || 0)}
+                    className="w-full px-2 py-1 text-xs bg-white border border-amber-300 rounded font-mono text-gray-900 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-900 mb-1">
+                    Décalage Y (mm, vertical)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={offsetY}
+                    onChange={(e) => handleOffsetYChange(parseFloat(e.target.value) || 0)}
+                    className="w-full px-2 py-1 text-xs bg-white border border-amber-300 rounded font-mono text-gray-900 font-bold"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-amber-900 mb-1">
-                  Décalage Y (mm, vertical)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={offsetY}
-                  onChange={(e) => handleOffsetYChange(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2 py-1 text-xs bg-white border border-amber-300 rounded font-mono text-gray-900"
-                />
+
+              <div className="flex items-center justify-between pt-1 border-t border-amber-200/60">
+                <p className="text-[9.5px] text-amber-800">
+                  Enregistré dans ce navigateur pour votre Canon G2010.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetOffsets}
+                  className="px-2 py-1 text-[10px] bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 rounded font-bold transition flex items-center gap-1"
+                >
+                  <RotateCcw size={10} /> Réinitialiser le décalage (0, 0)
+                </button>
               </div>
-              <p className="col-span-2 text-[9px] text-amber-800">
-                Enregistré automatiquement dans ce navigateur pour votre Canon G2410.
-              </p>
             </div>
           )}
+        </div>
+
+        {/* Canon G2010 Specific Guidelines in UI */}
+        <div className="w-full mb-3 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-950">
+          <div className="flex items-center gap-1.5 font-bold mb-1 text-blue-900">
+            <Printer size={13} className="text-blue-600 shrink-0" />
+            <span>Paramètres recommandés pour votre Canon G2010 :</span>
+          </div>
+          <ul className="list-disc list-inside space-y-0.5 text-[10px] text-blue-900/90 pl-1">
+            <li><b>Format de papier :</b> A4</li>
+            <li><b>Marges :</b> Aucune (None)</li>
+            <li><b>Échelle :</b> 100% (Par défaut / Ne pas adapter à la page)</li>
+            <li><i>Si décalage matériel Canon : activer &quot;Sans bordure&quot; ou utiliser l&apos;ajusteur de décalage en mm.</i></li>
+          </ul>
         </div>
 
         {/* Action buttons */}

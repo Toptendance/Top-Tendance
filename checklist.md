@@ -1,164 +1,164 @@
-# Top Tendance - Frontend Implementation Checklist
+# Checklist — Modular 5-File Refactoring Plan for `/inventory`
 
-## Project Information
-- **Brand**: Top Tendance
-- **Market / Currency**: Tunisia / TND
-- **Stack**: Next.js (App Router), TypeScript, Tailwind CSS, Lucide React, Context API + `localStorage`
-- **Design Language**: 
-  - **Women**: Calm, elegant, generous white space, neutral tones, editorial serif headings
-  - **Kids**: Warm pastel accents (Terracotta / Soft Peach, Sage), rounded corners, friendly, age-first browsing
+## 1. Problem Statement & Motivation
+The current file `src/app/inventory/page.tsx` contains **3,148 lines of code**, mixing:
+- Tab navigation & role permissions
+- Data fetching & state synchronization with Supabase
+- Filtering, searching & batch multi-item selection
+- Mobile card layout & Desktop table layout
+- Inline stock editing (+1 / -1 buttons and direct numeric input)
+- Five distinct modal dialogs (New Product with Multi-size batching, Add Variant, Edit Variant, Category Manager, and Delete Confirmations)
 
----
-
-## Phase 1: Project Setup & Design System Foundation
-- [x] Initialize Next.js 14+ project with TypeScript, Tailwind CSS, and App Router
-- [x] Install essential packages (`lucide-react`, `clsx`, `tailwind-merge`)
-- [x] Configure Tailwind theme:
-  - [x] Color tokens (Charcoal `#1A1A1A`, Warm Cream `#F9F6F0`, Linen `#EFECE6`, Kids Peach `#E78B72`, Sage `#8EAA90`, Muted Sale `#B84A39`)
-  - [x] Font families (`Playfair Display` for Women editorial headers, `Outfit` for Kids headers, `Inter` for interface and TND prices)
-  - [x] Custom border radiuses (`rounded-2xl` for Kids, clean minimalist lines for Women)
-- [x] Create `/data/products.json` mock data:
-  - [x] Schema: `id`, `slug`, `name`, `description`, `price`, `salePrice`, `category` (women|kids), `subcategory`, `ageGroup` (kids only), `colors[]`, `sizes[]` with stock status, `images[]`, `fabric`, `care[]`, `isNew`, `isBestSeller`
-  - [x] Populate at least 16–20 realistic products (Women dresses, knitwear, coats, sets; Kids rompers, tees, sets across age groups)
-  - [x] Curate high-quality responsive image URLs (with 2nd hover image for every product)
-- [x] Setup Currency utility (`formatPrice(amount)` -> e.g., `129,000 TND`)
+Because all features are bundled in one giant file, debugging, modifying features, or fixing issues is slow and error-prone.
 
 ---
 
-## Phase 2: Global Shell & State Management
-- [x] **State Providers (`/context`)**:
-  - [x] `CartContext`: items, quantity, selected size, selected color, add, update, remove, subtotal, localStorage persistence
-  - [x] `WishlistContext`: toggle wishlist, isWishlisted check, count, localStorage persistence
-- [x] **Global Header Component**:
-  - [x] Brand logo (Top Tendance) - ready for provided logo asset
-  - [x] Desktop navigation (Women, Kids, New Arrivals, Best Sellers)
-  - [x] Search trigger / input bar
-  - [x] Wishlist icon with live item badge
-  - [x] Cart icon with live counter and CartDrawer trigger
-- [x] **Mobile Navigation Drawer**:
-  - [x] Hamburger toggle button
-  - [x] Slide-out menu with clear Women / Kids split
-  - [x] Quick customer support links (Shipping, Contact)
-- [x] **Global Footer**:
-  - [x] Brand statement & newsletter signup box
-  - [x] Categorized links (Shop, Help & Service, About)
-  - [x] Tunisian payment icons & badges
-  - [x] Copyright and legal links
-- [x] **Feedback & Breadcrumbs**:
-  - [x] Toast notification system (added to cart, added to wishlist)
-  - [x] Reusable breadcrumbs component with schema-friendly structure
+## 2. Target 5-File Architecture
+
+```
+src/
+├── app/
+│   └── inventory/
+│       └── page.tsx                     [File 1: Main Page & State Orchestrator (~320 lines)]
+└── components/
+    └── inventory/
+        ├── InventoryTableSection.tsx    [File 2: Table, Mobile Cards, Filters & Batch Bar (~650 lines)]
+        ├── NewProductModal.tsx          [File 3: New Product & Multi-Size Batch Modal (~450 lines)]
+        ├── ProductVariantModals.tsx     [File 4: Add Variant & Edit Product/Variant Modals (~450 lines)]
+        └── CategoryAndConfirmModals.tsx [File 5: Category Manager & Delete Confirmations (~350 lines)]
+```
+
+### File Responsibilities Matrix
+
+| File # | Path | Primary Responsibility | Key Features Handled |
+| :--- | :--- | :--- | :--- |
+| **File 1** | `src/app/inventory/page.tsx` | **Main Dashboard Shell & Data Orchestrator** | Tab switcher (`inventory`, `cashiers`, `credits`, `deliveries`), Auth profile check, Data fetch (`fetchInventory`), KPI metric cards, Modal state triggers. |
+| **File 2** | `src/components/inventory/InventoryTableSection.tsx` | **Inventory Display & Quick Actions** | Search bar, category filter, print status filter, desktop table & mobile cards, inline stock steppers (`+1` / `-1`), floating batch action bar. |
+| **File 3** | `src/components/inventory/NewProductModal.tsx` | **New Model & Multi-Size Creator** | Single vs Multi-Size modes, size presets (Clothing XS-XXL, Shoes 36-40, Custom), auto SKU/barcode generation, batch submission to Supabase. |
+| **File 4** | `src/components/inventory/ProductVariantModals.tsx` | **Variant & Model Modifications** | `AddVariantModal` (adding new size/color to existing model) + `EditVariantModal` (updating model info, variant prices, stock, barcode, SKU). |
+| **File 5** | `src/components/inventory/CategoryAndConfirmModals.tsx` | **Categories & Delete Dialogs** | `CategoryManagerModal` (list, add, edit, delete categories) + `VariantDeleteModal` (soft-delete single size) + `ProductDeleteModal` (soft-delete entire model). |
 
 ---
 
-## Phase 3: Catalog & Category Pages
-- [x] **ProductCard Component**:
-  - [x] Image display with hover effect showing 2nd image
-  - [x] "New" and "Sale" status badges
-  - [x] Heart icon for instant wishlist toggle
-  - [x] Product title, category, and price in TND (sale price crossed out)
-  - [x] Color swatches preview (clickable to switch card photo)
-  - [x] Mobile-optimized touch targets
-- [x] **Filter System (`FilterPanel`)**:
-  - [x] Size filter placed at the **top** and **expanded by default**
-  - [x] Item counts dynamically shown next to each filter option
-  - [x] Out-of-stock / zero-result filter options visually muted and disabled
-  - [x] Color filter with visual swatches
-  - [x] Price range slider / inputs
-  - [x] Subcategory checkboxes
-- [x] **Mobile Filter Bottom Sheet**:
-  - [x] Floating or sticky "Filters" trigger button
-  - [x] Smooth slide-up sheet with "Apply" and "Reset" actions
-- [x] **Sorting Dropdown**:
-  - [x] Featured, Newest, Price: Low to High, Price: High to Low
-- [x] **Women Category Page (`/women`)**:
-  - [x] Editorial header & aesthetic category banner
-  - [x] Desktop sidebar filter + responsive product grid
-- [x] **Kids Category Page (`/kids`)**:
-  - [x] Age-first primary navigation tabs (`0-12m`, `1-3y`, `4-7y`, `8-12y`)
-  - [x] Filter logic: filters by age group first, size second
-  - [x] Warmer pastel UI styling & softer rounded cards
+## 3. Implementation Checklist
+
+### Phase 1: Shared Types & Preparation
+- [x] **1.1 Define Shared Types & Interfaces**
+  - [x] Extract `ProductWithVariants`, `VariantItem`, `BatchVariantDraft`, `SelectedVariantItem` for clean imports across the 5 files.
+- [x] **1.2 Create `src/components/inventory/` Directory**
+  - [x] Ensure proper path structure for the new modular components.
 
 ---
 
-## Phase 4: Product Detail Page (PDP) (`/product/[slug]`)
-- [x] **ImageGallery**:
-  - [x] Desktop: multi-image grid or thumbnail carousel with zoom
-  - [x] Mobile: touch-swipeable carousel with pagination dots
-- [x] **PDP Layout Sequence (Strict Spec Order)**:
-  1. Image gallery
-  2. Product name & rating badge
-  3. Price (regular & sale in TND)
-  4. Color selector with active swatch highlight
-  5. Size selector + "Find my size" guide link
-  6. Out-of-stock sizes shown crossed out (not hidden)
-  7. "Add to Cart" primary button
-  8. Return policy line directly under the button ("Free returns within 14 days across Tunisia")
-  9. Product description
-  10. Fabric & Care breakdown accordion
-  11. Customer reviews preview
-- [x] **SizeGuideModal**:
-  - [x] Women measurement chart (Bust, Waist, Hips in cm)
-  - [x] Kids age/height/weight chart
-- [x] **Mobile Sticky Action Bar**:
-  - [x] Fixed bottom bar on mobile viewports (< 768px)
-  - [x] Displays price, selected variant summary, and direct "Add to Cart" CTA
+### Phase 2: File 2 — `InventoryTableSection.tsx`
+- [x] **2.1 Component Props Interface**
+  - [x] `products`: `ProductWithVariants[]`
+  - [x] `categories`: `{ id: string; name: string }[]`
+  - [x] `loading`: `boolean`
+  - [x] `selectedVariants`: `Map<string, SelectedVariantItem>`
+  - [x] `onToggleSelectVariant`: `(item: SelectedVariantItem) => void`
+  - [x] `onSelectAllVisible`: `() => void`
+  - [x] `onClearSelection`: `() => void`
+  - [x] `onSelectAllUnprinted`: `() => void`
+  - [x] `onQuickStockUpdate`: `(variantId: string, delta: number) => Promise<void>`
+  - [x] `onDirectStockCommit`: `(variantId: string, newStock: number) => Promise<void>`
+  - [x] `onOpenTagModal`: `(variant: any) => void`
+  - [x] `onOpenEditVariant`: `(product: any, variant: any) => void`
+  - [x] `onOpenAddVariant`: `(product: any, variant: any) => void`
+  - [x] `onOpenDeleteVariant`: `(variantInfo: any) => void`
+  - [x] `onOpenCategoryModal`: `() => void`
+  - [x] `onBatchTogglePrinted`: `(status: boolean) => Promise<void>`
+  - [x] `onTogglePrintedStatus`: `(variantId: string, currentStatus?: boolean) => Promise<void>`
+- [x] **2.2 Migrate Search & Filter Controls**
+  - [x] Search input by product name, SKU, or barcode.
+  - [x] Category dropdown selector.
+  - [x] Low-stock quick toggle button.
+  - [x] Print status pills (`Tous`, `Non imprimés`, `Imprimés`).
+  - [x] Category Manager button (`Gérer les catégories`).
+- [x] **2.3 Migrate Views**
+  - [x] Mobile Card View (`< md` screen).
+  - [x] Desktop Table View (`md+` screen) with sticky header.
+  - [x] Floating Batch Action Toolbar with batch print & batch mark actions.
 
 ---
 
-## Phase 5: Cart, Checkout & Wishlist
-- [x] **CartDrawer (Slide-out)**:
-  - [x] Slide-out animation from right
-  - [x] List of cart items (thumbnail, name, selected size/color, quantity adjuster, remove action)
-  - [x] Free shipping progress indicator
-  - [x] Subtotal calculation in TND
-  - [x] Quick "View Cart" and "Checkout" buttons
-- [x] **Full Cart Page (`/cart`)**:
-  - [x] Comprehensive cart table with quantity management
-  - [x] Order summary breakdown (Subtotal, Estimated Delivery, Total)
-  - [x] Empty cart state with link to continue shopping
-- [x] **Checkout Page (`/checkout`) [UI Only]**:
-  - [x] Step 1: Customer Contact details
-  - [x] Step 2: Shipping address in Tunisia (Governorate dropdown: Tunis, Sousse, Sfax, etc.)
-  - [x] Step 3: Payment method selector (Cash on Delivery / Paiement à la livraison, Konnect/Credit Card preview)
-  - [x] Sticky order summary sidebar with product miniatures
-- [x] **Wishlist Page (`/wishlist`)**:
-  - [x] Grid of saved items with quick "Move to Cart" button
-  - [x] Remove from wishlist action
-  - [x] Empty state with recommended products
+### Phase 3: File 3 — `NewProductModal.tsx`
+- [x] **3.1 Component Props Interface**
+  - [x] `isOpen`: `boolean`
+  - [x] `onClose`: `() => void`
+  - [x] `categories`: `{ id: string; name: string }[]`
+  - [x] `existingBarcodes`: `Set<string>`
+  - [x] `existingSkus`: `Set<string>`
+  - [x] `onSuccess`: `() => void`
+- [x] **3.2 State & Logic Isolation**
+  - [x] Move form state (`productForm`), error states, and loading indicators.
+  - [x] Multi-size presets: Clothing (`XS`, `S`, `M`, `L`, `XL`, `XXL`), Shoe range (`36-40`), and Custom CSV size input.
+  - [x] Automatic SKU generator and unique barcode generator.
+  - [x] Real-time duplicate SKU detection.
+- [x] **3.3 Supabase Submission**
+  - [x] Insert parent product into `products`.
+  - [x] Insert single variant or batch variants into `variants`.
+  - [x] Insert manager cost price into `variant_costs`.
+  - [x] Success toast notification and trigger `onSuccess()`.
 
 ---
 
-## Phase 6: Search & Auxiliary Pages
-- [x] **Search Results Page (`/search`)**:
-  - [x] Live search query handling
-  - [x] Matching product results grid with active filters
-  - [x] "No results found" suggestions
-- [x] **Auth Pages (`/login`, `/register`) [UI Only]**:
-  - [x] Elegant login form with validation styling
-  - [x] Registration form (name, email, phone number, password)
-- [x] **Account Dashboard (`/account`) [UI Only]**:
-  - [x] Customer profile summary
-  - [x] Recent mock order history with status badges ("In Transit", "Delivered")
-  - [x] Saved addresses tab
-- [x] **Information Pages**:
-  - [x] About Page (`/about`): Brand story, craftsmanship, local presence
-  - [x] Contact Page (`/contact`): Contact form, phone, WhatsApp button, boutique location
-  - [x] Shipping & Returns (`/shipping-returns`): Delivery times per governorate, return policies
+### Phase 4: File 4 — `ProductVariantModals.tsx`
+- [x] **4.1 `AddVariantModal` Component**
+  - [x] Props: `targetProduct`, `onClose`, `onSuccess`, `existingBarcodes`.
+  - [x] Pre-populates category, brand, default selling/cost prices.
+  - [x] Size quick selectors (Clothing & Shoe pills).
+  - [x] Form submission: creates variant in `variants` table and costs in `variant_costs`.
+- [x] **4.2 `EditVariantModal` Component**
+  - [x] Props: `editingData`, `categories`, `onClose`, `onSuccess`.
+  - [x] Dual-entity update: updates `products` (name, brand, category_id) and `variants` (size, color, prices, stock, barcode, SKU).
+  - [x] Updates cost price in `variant_costs` via upsert.
+  - [x] Toast notification and `onSuccess()` trigger.
 
 ---
 
-## Phase 7: Quality, Accessibility & Mobile Audit
-- [x] **Responsive Viewport Testing**:
-  - [x] Mobile standard: `375px` (iPhone SE / mini)
-  - [x] Tablet: `768px` (iPad)
-  - [x] Desktop: `1280px` / `1440px`
-- [x] **Accessibility (WCAG AA)**:
-  - [x] Contrast ratio $\ge$ 4.5:1 for body and heading text against backgrounds
-  - [x] Clear keyboard focus rings on all buttons, links, and inputs
-  - [x] Descriptive `alt` attributes on all product and hero images
-  - [x] Proper ARIA labels for icon-only buttons (Wishlist, Cart, Mobile Menu)
-- [x] **Performance & SEO**:
-  - [x] `next/image` optimization with explicit `sizes` attributes and priority on LCP hero images
-  - [x] Dynamic metadata (`generateMetadata`) for PDP pages
-  - [x] OpenGraph title and descriptions for social sharing
+### Phase 5: File 5 — `CategoryAndConfirmModals.tsx`
+- [x] **5.1 `CategoryManagerModal`**
+  - [x] Props: `isOpen`, `onClose`, `categories`, `productsCountMap`, `onCategoriesChanged`.
+  - [x] Add new category (with description).
+  - [x] Inline category name & description edit.
+  - [x] Category deletion with safety check (verifies if referenced by products).
+- [ ] **5.2 `VariantDeleteModal`**
+  - [ ] Props: `variantToDelete`, `onClose`, `onConfirmDeleteVariant`, `onSwitchToDeleteProduct`, `isDeleting`.
+  - [ ] Soft-delete variant (`is_active = false`). If it's the last variant, automatically soft-deletes parent product.
+- [ ] **5.3 `ProductDeleteModal`**
+  - [ ] Props: `productToDelete`, `onClose`, `onConfirmDeleteProduct`, `isDeleting`.
+  - [ ] Soft-deletes parent product and all its variants.
 
+---
+
+### Phase 6: File 1 — `src/app/inventory/page.tsx` (Refactoring & Assembly)
+- [x] **6.1 Streamline Main Component**
+  - [x] Keep core state: `products`, `categories`, `loading`, `userProfile`, `activeTab`.
+  - [x] Keep selection state: `selectedVariants`.
+  - [x] Keep modal control state (`isProductModalOpen`, `addVariantProduct`, `editingVariantData`, etc.).
+  - [x] Retain high-level stock update handler with optimistic UI updates.
+- [x] **6.2 Render Clean Tree**
+  - [x] Header + Tabs (`inventory`, `cashiers`, `credits`, `deliveries`).
+  - [x] KPI Cards summary (Total references, total pieces in stock, low stock alert count).
+  - [x] Render `<InventoryTableSection />`.
+  - [x] Render `<NewProductModal />`.
+  - [x] Render `<ProductVariantModals />` (`AddVariantModal` & `EditVariantModal`).
+  - [x] Render `<CategoryAndConfirmModals />` (`CategoryManagerModal`, `VariantDeleteModal`, `ProductDeleteModal`).
+  - [x] Render auxiliary modals (`<BarcodeTagModal />`, `<MobileScannerModal />`, `<DeliveryReceivingModal />`).
+
+---
+
+## 4. Verification & Safety Guidelines
+- [x] **TypeScript Check**: Run `npx tsc --noEmit` to verify 0 type errors across all 5 files.
+- [x] **Feature Parity Verification**:
+  - [x] Tab switching: `inventory` ↔ `cashiers` ↔ `credits` ↔ `deliveries`.
+  - [x] Search filter by name, SKU, and barcode.
+  - [x] Category filter and print status filter (`Tous`, `Non imprimés`, `Imprimés`).
+  - [x] Inline stock adjustment: `+1` / `-1` and typing exact numbers.
+  - [x] Batch barcode printing: multi-select checkboxes and floating action bar.
+  - [x] Adding a new model (both single size and multi-size batch).
+  - [x] Adding a new size to an existing model.
+  - [x] Editing product & variant info.
+  - [x] Soft-deleting a single variant vs deleting the whole model.
+  - [x] Managing categories (add, rename, delete).
