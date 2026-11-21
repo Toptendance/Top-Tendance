@@ -17,7 +17,8 @@ import {
   Boxes,
   TrendingUp,
   CreditCard,
-  ChevronDown
+  ChevronDown,
+  Radio
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -168,6 +169,16 @@ export function Header() {
                     Caisse POS
                   </Link>
                   <Link
+                    href="/live"
+                    className="text-xs uppercase tracking-widest font-bold text-rose-700 bg-rose-50 hover:bg-rose-100/80 px-3 py-1.5 rounded-full border border-rose-200/80 shadow-xs shadow-rose-100 hover:shadow-rose-200 transition flex items-center gap-2 group"
+                  >
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                    </span>
+                    Écran Live
+                  </Link>
+                  <Link
                     href="/inventory"
                     className="text-xs uppercase tracking-widest font-semibold text-charcoal hover:text-charcoal-500 transition py-1 relative group"
                   >
@@ -289,6 +300,13 @@ export function Header() {
                                 className="flex items-center gap-2 px-4 py-2 hover:bg-amber-50 text-amber-900 font-semibold transition"
                               >
                                 <CreditCard size={14} className="text-amber-700" /> Caisse Enregistreuse (POS)
+                              </Link>
+                              <Link
+                                href="/live"
+                                onClick={() => setIsAccountMenuOpen(false)}
+                                className="flex items-center gap-2 px-4 py-2 hover:bg-rose-50 text-rose-700 font-semibold transition"
+                              >
+                                <Radio size={14} className="text-rose-600 animate-pulse" /> Écran Live Countdown
                               </Link>
                               <div className="border-t border-border/50 my-1" />
                               <Link

@@ -12,6 +12,7 @@ import {
   Users,
   Wallet,
   Truck,
+  Radio,
 } from 'lucide-react';
 import { supabase } from '@/utils/supabaseClient';
 import { useToast } from '@/context/ToastContext';
@@ -743,12 +744,28 @@ export default function InventoryDashboardPage() {
               <PackagePlus size={15} /> <span>Réception</span>
             </button>
             {!isCashier && (
-              <button
-                onClick={() => setIsProductModalOpen(true)}
-                className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px] cursor-pointer"
-              >
-                <Plus size={15} /> <span>Nouveau Produit</span>
-              </button>
+              <>
+                <Link
+                  href="/live"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 sm:flex-initial justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px] cursor-pointer"
+                  title="Ouvrir l'écran Live Countdown"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                  </span>
+                  <Radio size={14} className="text-rose-600" />
+                  <span>Lancer Live</span>
+                </Link>
+                <button
+                  onClick={() => setIsProductModalOpen(true)}
+                  className="flex-1 sm:flex-initial justify-center bg-black hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 sm:px-4 rounded-xl flex items-center gap-1.5 sm:gap-2 transition shadow-xs min-h-[40px] cursor-pointer"
+                >
+                  <Plus size={15} /> <span>Nouveau Produit</span>
+                </button>
+              </>
             )}
           </div>
         )}
