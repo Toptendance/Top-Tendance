@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   LogOut,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface LiveSettings {
@@ -45,6 +46,41 @@ function formatForDateTimeLocal(date: Date) {
   const hours = pad(date.getHours());
   const minutes = pad(date.getMinutes());
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function getFutureDefaultTime(targetTimeStr?: string | null): string {
+  if (targetTimeStr) {
+    const targetDate = new Date(targetTimeStr);
+    // If targetDate is valid and strictly in the future (at least 60 seconds ahead)
+    if (!isNaN(targetDate.getTime()) && targetDate.getTime() > Date.now() + 60000) {
+      return formatForDateTimeLocal(targetDate);
+    }
+  }
+
+  // If expired or missing, default to Now + 30 minutes, rounded to nearest 5 minutes
+  const future = new Date(Date.now() + 30 * 60 * 1000);
+  const remainder = future.getMinutes() % 5;
+  if (remainder !== 0) {
+    future.setMinutes(future.getMinutes() + (5 - remainder));
+  }
+  future.setSeconds(0, 0);
+  return formatForDateTimeLocal(future);
+}
+
+function calcTimeRemaining(targetTs: number | null): TimeRemaining {
+  if (!targetTs) {
+    return { days: '00', hours: '00', minutes: '00', seconds: '00', totalSeconds: 0 };
+  }
+  const now = Date.now();
+  const diff = Math.max(0, Math.floor((targetTs - now) / 1000));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    days: pad(Math.floor(diff / 86400)),
+    hours: pad(Math.floor((diff % 86400) / 3600)),
+    minutes: pad(Math.floor((diff % 3600) / 60)),
+    seconds: pad(diff % 60),
+    totalSeconds: diff,
+  };
 }
 
 function LiveContent() {
@@ -84,6 +120,45 @@ function LiveContent() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const isManager = userProfile?.role === 'manager';
+
+  // Check if selected target time is in the past
+  const isTimeInPast = useMemo(() => {
+    if (!editTime) return false;
+    const t = new Date(editTime).getTime();
+    return !isNaN(t) && t <= Date.now();
+  }, [editTime]);
+
+  const minDateTime = useMemo(() => {
+    return formatForDateTimeLocal(new Date());
+  }, [isSettingsOpen]);
+
+  // Quick 1-Click Preset Handlers
+  const applyPresetMinutes = useCallback((minutes: number) => {
+    const target = new Date(Date.now() + minutes * 60 * 1000);
+    target.setSeconds(0, 0);
+    setEditTime(formatForDateTimeLocal(target));
+  }, []);
+
+  const applyTonightPreset = useCallback(() => {
+    const now = new Date();
+    const tonight = new Date();
+    tonight.setHours(20, 0, 0, 0);
+    if (tonight.getTime() <= now.getTime()) {
+      tonight.setDate(tonight.getDate() + 1);
+    }
+    setEditTime(formatForDateTimeLocal(tonight));
+  }, []);
+
+  // Intelligent Modal Open Handler (Auto-resets expired target_time to Today + 30 min)
+  const handleOpenSettings = useCallback(() => {
+    setEditTime(getFutureDefaultTime(settings?.target_time));
+    if (settings) {
+      setEditTitle(settings.title);
+      setEditSubtitle(settings.subtitle);
+      setEditTheme((settings.theme as 'dark' | 'light') || 'dark');
+    }
+    setIsSettingsOpen(true);
+  }, [settings]);
 
   const [timeLeft, setTimeLeft] = useState<TimeRemaining>({
     days: '00',
@@ -187,7 +262,11 @@ function LiveContent() {
         if (!isManager) {
           setIsManagerAuthOpen(true);
         } else {
-          setIsSettingsOpen((prev) => !prev);
+          if (isSettingsOpen) {
+            setIsSettingsOpen(false);
+          } else {
+            handleOpenSettings();
+          }
         }
       }
       if (e.key === 'Escape') {
@@ -225,12 +304,15 @@ function LiveContent() {
           setEditSubtitle(data.subtitle);
           setEditTheme((data.theme as 'dark' | 'light') || 'dark');
           if (data.target_time) {
-            setEditTime(formatForDateTimeLocal(new Date(data.target_time)));
+            setEditTime(getFutureDefaultTime(data.target_time));
+            const ts = new Date(data.target_time).getTime();
+            if (!isNaN(ts)) {
+              setTimeLeft(calcTimeRemaining(ts));
+              wasPositiveDiffRef.current = ts > Date.now();
+            }
           }
         } else {
-          const d = new Date(Date.now() + 3600e3);
-          d.setMinutes(0, 0, 0);
-          setEditTime(formatForDateTimeLocal(d));
+          setEditTime(getFutureDefaultTime(null));
         }
       } catch (err) {
         console.error('Unexpected error loading live settings:', err);
@@ -253,8 +335,13 @@ function LiveContent() {
             setEditTitle(updated.title);
             setEditSubtitle(updated.subtitle);
             setEditTheme((updated.theme as 'dark' | 'light') || 'dark');
+            setEditTime(getFutureDefaultTime(updated.target_time));
             if (updated.target_time) {
-              setEditTime(formatForDateTimeLocal(new Date(updated.target_time)));
+              const ts = new Date(updated.target_time).getTime();
+              if (!isNaN(ts)) {
+                setTimeLeft(calcTimeRemaining(ts));
+                wasPositiveDiffRef.current = ts > Date.now();
+              }
             }
             hasPlayedSoundRef.current = false;
           }
@@ -283,32 +370,20 @@ function LiveContent() {
     }
 
     function calculateTime() {
-      const now = Date.now();
-      const diff = Math.max(0, Math.floor((targetTimestamp! - now) / 1000));
+      const remaining = calcTimeRemaining(targetTimestamp);
 
-      if (diff > 0) {
+      if (remaining.totalSeconds > 0) {
         wasPositiveDiffRef.current = true;
       }
 
-      if (diff === 0 && wasPositiveDiffRef.current && !hasPlayedSoundRef.current) {
+      if (remaining.totalSeconds === 0 && wasPositiveDiffRef.current && !hasPlayedSoundRef.current) {
         hasPlayedSoundRef.current = true;
         if (soundEnabled) {
           playLiveChime();
         }
       }
 
-      const d = Math.floor(diff / 86400);
-      const h = Math.floor((diff % 86400) / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      const s = diff % 60;
-
-      setTimeLeft({
-        days: pad(d),
-        hours: pad(h),
-        minutes: pad(m),
-        seconds: pad(s),
-        totalSeconds: diff,
-      });
+      setTimeLeft(remaining);
     }
 
     calculateTime();
@@ -348,7 +423,7 @@ function LiveContent() {
       setUserProfile(profile);
       setIsManagerAuthOpen(false);
       setManagerPassword('');
-      setIsSettingsOpen(true);
+      handleOpenSettings();
     } catch (err: any) {
       setAuthError(err.message || 'Identifiants invalides');
     } finally {
@@ -368,6 +443,11 @@ function LiveContent() {
         return;
       }
 
+      if (new Date(editTime).getTime() <= Date.now()) {
+        alert('Impossible de lancer un compte à rebours avec une date déjà passée.');
+        return;
+      }
+
       const isoTargetTime = new Date(editTime).toISOString();
       const payload = {
         title: editTitle.trim(),
@@ -379,6 +459,36 @@ function LiveContent() {
         updated_at: new Date().toISOString(),
       };
 
+      // 1. Optimistic UI update: Immediately update state and recalculate countdown
+      const targetId = settings?.id || 'live-active-settings';
+      const optimisticSettings: LiveSettings = {
+        id: targetId,
+        title: payload.title,
+        subtitle: payload.subtitle,
+        target_time: payload.target_time,
+        is_active: payload.is_active,
+        theme: payload.theme,
+      };
+      setSettings(optimisticSettings);
+
+      const targetTs = new Date(isoTargetTime).getTime();
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((targetTs - now) / 1000));
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setTimeLeft({
+        days: pad(Math.floor(diff / 86400)),
+        hours: pad(Math.floor((diff % 86400) / 3600)),
+        minutes: pad(Math.floor((diff % 3600) / 60)),
+        seconds: pad(diff % 60),
+        totalSeconds: diff,
+      });
+      wasPositiveDiffRef.current = diff > 0;
+      hasPlayedSoundRef.current = false;
+
+      // Close settings drawer immediately
+      setIsSettingsOpen(false);
+
+      // 2. Persist to Supabase Database
       if (settings?.id) {
         const { error } = await supabase
           .from('live_settings')
@@ -386,13 +496,16 @@ function LiveContent() {
           .eq('id', settings.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('live_settings')
-          .insert([payload]);
+          .insert([payload])
+          .select()
+          .single();
         if (error) throw error;
+        if (inserted) {
+          setSettings(inserted as LiveSettings);
+        }
       }
-
-      setIsSettingsOpen(false);
     } catch (err: any) {
       alert(`Erreur lors de l'enregistrement: ${err.message}`);
     } finally {
@@ -418,7 +531,11 @@ function LiveContent() {
     });
   };
 
-  const isLive = targetTimestamp !== null && timeLeft.totalSeconds === 0;
+  const isLive =
+    !loading &&
+    targetTimestamp !== null &&
+    targetTimestamp <= Date.now() &&
+    timeLeft.totalSeconds === 0;
   const currentTheme = settings?.theme || 'dark';
   const isLightTheme = currentTheme === 'light';
   const title = settings?.title || 'Vente Flash en Direct';
@@ -486,7 +603,7 @@ function LiveContent() {
       {isManager && !isCleanMode && (
         <div className="absolute top-6 right-6 z-50 animate-fadeIn">
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={handleOpenSettings}
             className={`group flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all shadow-lg backdrop-blur-md ${
               isLightTheme
                 ? 'bg-white/80 hover:bg-[#E8265F]/10 border-charcoal/10 hover:border-[#E8265F]/40 text-charcoal'
@@ -777,10 +894,57 @@ function LiveContent() {
                 <input
                   type="datetime-local"
                   value={editTime}
+                  min={minDateTime}
                   onChange={(e) => setEditTime(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/[0.15] text-white text-sm focus:outline-none focus:border-[#E8265F] transition scheme-dark"
+                  className={`w-full px-4 py-3 rounded-xl bg-white/[0.05] border text-white text-sm focus:outline-none transition scheme-dark ${
+                    isTimeInPast
+                      ? 'border-red-500/80 focus:border-red-500'
+                      : 'border-white/[0.15] focus:border-[#E8265F]'
+                  }`}
                 />
+
+                {/* 1-Click Quick Launch Presets */}
+                <div className="mt-2.5 flex items-center flex-wrap gap-2">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-white/50 mr-0.5">
+                    Raccourcis :
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyPresetMinutes(15)}
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-[#E8265F]/20 hover:text-[#E8265F] hover:border-[#E8265F]/40 border border-white/10 text-white/80 text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    +15 min
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPresetMinutes(30)}
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-[#E8265F]/20 hover:text-[#E8265F] hover:border-[#E8265F]/40 border border-white/10 text-white/80 text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    +30 min
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPresetMinutes(60)}
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-[#E8265F]/20 hover:text-[#E8265F] hover:border-[#E8265F]/40 border border-white/10 text-white/80 text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    +1 heure
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyTonightPreset}
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-[#D4AF37]/20 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 border border-white/10 text-white/80 text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    Ce soir 20h00
+                  </button>
+                </div>
+
+                {isTimeInPast && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center gap-2 text-xs text-red-300 animate-fadeIn">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>⚠️ L’heure choisie est déjà passée. Veuillez choisir une heure future.</span>
+                  </div>
+                )}
                 <p className="mt-1.5 text-[11px] text-white/40">
                   Le compte à rebours se synchronise automatiquement sur tous les écrans et flux OBS connectés.
                 </p>
@@ -866,8 +1030,8 @@ function LiveContent() {
 
                   <button
                     type="submit"
-                    disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#E8265F] hover:bg-[#d01e51] text-white font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-[#E8265F]/30 disabled:opacity-50"
+                    disabled={isSaving || isTimeInPast || !editTime}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#E8265F] hover:bg-[#d01e51] text-white font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-[#E8265F]/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
                     {isSaving ? 'Enregistrement...' : 'Enregistrer & Lancer'}

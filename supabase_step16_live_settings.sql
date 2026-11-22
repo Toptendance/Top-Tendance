@@ -35,7 +35,10 @@ CREATE POLICY "live_settings_manager_all"
     USING (public.is_manager())
     WITH CHECK (public.is_manager());
 
--- 3. Seed initial default row if empty
+-- 3. Enable Realtime broadcast for live_settings
+ALTER PUBLICATION supabase_realtime ADD TABLE public.live_settings;
+
+-- 4. Seed initial default row if empty
 INSERT INTO public.live_settings (title, subtitle, target_time, is_active, theme)
 SELECT 
     'Vente Flash en Direct',
