@@ -34,6 +34,8 @@ export default function NewProductModal({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSkuDuplicate, setIsSkuDuplicate] = useState(false);
+  const [isSkuAuto, setIsSkuAuto] = useState(false);
+  const [isSkuManuallyEdited, setIsSkuManuallyEdited] = useState(false);
 
   // Multi-size batch state
   const [isMultiSize, setIsMultiSize] = useState(false);
@@ -44,14 +46,16 @@ export default function NewProductModal({
 
   if (!isOpen) return null;
 
-  // Real-time duplicate SKU check
+  // Real-time duplicate SKU check (case-insensitive)
   const checkSkuDuplicate = (skuToCheck: string): boolean => {
-    const trimmed = skuToCheck.trim();
+    const trimmed = skuToCheck.trim().toLowerCase();
     if (!trimmed) return false;
     return existingSkus.has(trimmed);
   };
 
   const handleSkuChange = (val: string) => {
+    setIsSkuManuallyEdited(true);
+    setIsSkuAuto(false);
     setProductForm((prev) => ({ ...prev, sku: val }));
     const isDup = checkSkuDuplicate(val);
     setIsSkuDuplicate(isDup);
@@ -64,10 +68,13 @@ export default function NewProductModal({
 
   // Automatic SKU generator
   const handleAutoGenerateSku = () => {
+    setIsSkuAuto(true);
+    setIsSkuManuallyEdited(false);
     const generated = generateVariantSku(
       productForm.name || 'PROD',
       productForm.size || 'STD',
-      productForm.color || 'STD'
+      productForm.color || 'STD',
+      existingSkus
     );
     setProductForm((prev) => ({ ...prev, sku: generated }));
     const isDup = checkSkuDuplicate(generated);
@@ -79,15 +86,88 @@ export default function NewProductModal({
     }
   };
 
-  // Helper to recompute multi-size draft table with unique barcodes
+  const handleNameChange = (val: string) => {
+    setProductForm((prev) => {
+      const next = { ...prev, name: val };
+      if (isSkuAuto && !isSkuManuallyEdited) {
+        next.sku = generateVariantSku(val || 'PROD', prev.size || 'STD', prev.color || 'STD', existingSkus);
+        const isDup = checkSkuDuplicate(next.sku);
+        setIsSkuDuplicate(isDup);
+        if (isDup) {
+          setFormError('Ce SKU généré existe déjà. Veuillez le modifier.');
+        } else if (formError?.includes('SKU')) {
+          setFormError(null);
+        }
+      }
+      return next;
+    });
+
+    if (isMultiSize && batchVariants.length > 0) {
+      const knownSkus = new Set<string>(existingSkus);
+      setBatchVariants((prev) =>
+        prev.map((v) => {
+          const sku = generateVariantSku(val || 'PROD', v.size, productForm.color || 'STD', knownSkus);
+          knownSkus.add(sku.toLowerCase());
+          return {
+            ...v,
+            sku,
+          };
+        })
+      );
+    }
+  };
+
+  const handleSizeChange = (val: string) => {
+    setProductForm((prev) => {
+      const next = { ...prev, size: val };
+      if (isSkuAuto && !isSkuManuallyEdited) {
+        next.sku = generateVariantSku(prev.name || 'PROD', val || 'STD', prev.color || 'STD', existingSkus);
+        const isDup = checkSkuDuplicate(next.sku);
+        setIsSkuDuplicate(isDup);
+        if (isDup) {
+          setFormError('Ce SKU généré existe déjà. Veuillez le modifier.');
+        } else if (formError?.includes('SKU')) {
+          setFormError(null);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleColorChange = (val: string) => {
+    setProductForm((prev) => {
+      const next = { ...prev, color: val };
+      if (isSkuAuto && !isSkuManuallyEdited) {
+        next.sku = generateVariantSku(prev.name || 'PROD', prev.size || 'STD', val || 'STD', existingSkus);
+        const isDup = checkSkuDuplicate(next.sku);
+        setIsSkuDuplicate(isDup);
+        if (isDup) {
+          setFormError('Ce SKU généré existe déjà. Veuillez le modifier.');
+        } else if (formError?.includes('SKU')) {
+          setFormError(null);
+        }
+      }
+      return next;
+    });
+  };
+
+  // Helper to recompute multi-size draft table with unique barcodes and collision-free SKUs
   const applySizeListToBatch = (sizes: string[]) => {
-    const known = new Set<string>(existingBarcodes);
+    const knownBarcodes = new Set<string>(existingBarcodes);
+    const knownSkus = new Set<string>(existingSkus);
     const drafts: BatchVariantDraft[] = sizes.map((sz) => {
-      const generatedBarcode = generateUniqueBarcode(known);
-      known.add(generatedBarcode);
+      const generatedBarcode = generateUniqueBarcode(knownBarcodes);
+      knownBarcodes.add(generatedBarcode);
+      const generatedSku = generateVariantSku(
+        productForm.name || 'PROD',
+        sz,
+        productForm.color || 'STD',
+        knownSkus
+      );
+      knownSkus.add(generatedSku.toLowerCase());
       return {
         size: sz,
-        sku: generateVariantSku(productForm.name || 'PROD', sz, productForm.color || 'STD'),
+        sku: generatedSku,
         barcode: generatedBarcode,
         stock: parseInt(productForm.stock_quantity, 10) || 10,
         selling_price: productForm.selling_price || '79.000',
@@ -95,6 +175,10 @@ export default function NewProductModal({
       };
     });
     setBatchVariants(drafts);
+    setIsSkuDuplicate(false);
+    if (formError?.includes('SKU')) {
+      setFormError(null);
+    }
   };
 
   // Multi-size presets
@@ -206,7 +290,7 @@ export default function NewProductModal({
         // Single Variant insertion
         const skuToUse =
           productForm.sku.trim() ||
-          generateVariantSku(productForm.name, productForm.size, productForm.color);
+          generateVariantSku(productForm.name, productForm.size, productForm.color, existingSkus);
 
         const { data: variant, error: vErr } = await supabase
           .from('variants')
@@ -259,11 +343,17 @@ export default function NewProductModal({
       onClose();
     } catch (err: any) {
       console.error('Error creating product & variants:', err);
+      const errMsg = (err?.message || err?.details || '').toLowerCase();
       if (
+        errMsg.includes('variants_barcode_key') ||
+        (errMsg.includes('barcode') && errMsg.includes('key'))
+      ) {
+        setFormError("Ce code-barres est déjà utilisé par un autre article. Veuillez le modifier ou le régénérer.");
+      } else if (
         err?.code === '23505' ||
-        err?.message?.includes('variants_sku_key') ||
-        err?.message?.includes('duplicate key') ||
-        err?.message?.toLowerCase()?.includes('sku')
+        errMsg.includes('variants_sku_key') ||
+        errMsg.includes('duplicate key') ||
+        errMsg.includes('sku')
       ) {
         setIsSkuDuplicate(true);
         setFormError("Un SKU en doublon a été détecté. Modifiez-le ou utilisez 'Régénérer SKUs & Barcodes'.");
@@ -307,7 +397,7 @@ export default function NewProductModal({
                 type="text"
                 required
                 value={productForm.name}
-                onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                onChange={(e) => handleNameChange(e.target.value)}
                 className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
                 placeholder="Ex: Chemise Lin"
               />
@@ -502,7 +592,7 @@ export default function NewProductModal({
                   <input
                     type="text"
                     value={productForm.size}
-                    onChange={(e) => setProductForm({ ...productForm, size: e.target.value })}
+                    onChange={(e) => handleSizeChange(e.target.value)}
                     className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
                   />
                 </div>
@@ -513,7 +603,7 @@ export default function NewProductModal({
                   <input
                     type="text"
                     value={productForm.color}
-                    onChange={(e) => setProductForm({ ...productForm, color: e.target.value })}
+                    onChange={(e) => handleColorChange(e.target.value)}
                     className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"
                   />
                 </div>
@@ -533,11 +623,16 @@ export default function NewProductModal({
                     onChange={(e) => {
                       const val = e.target.value;
                       setProductForm({ ...productForm, color: val });
+                      const knownSkus = new Set<string>(existingSkus);
                       setBatchVariants((prev) =>
-                        prev.map((v) => ({
-                          ...v,
-                          sku: generateVariantSku(productForm.name || 'PROD', v.size, val),
-                        }))
+                        prev.map((v) => {
+                          const sku = generateVariantSku(productForm.name || 'PROD', v.size, val, knownSkus);
+                          knownSkus.add(sku.toLowerCase());
+                          return {
+                            ...v,
+                            sku,
+                          };
+                        })
                       );
                     }}
                     className="w-full text-sm sm:text-xs p-2.5 sm:p-2 border rounded-xl"

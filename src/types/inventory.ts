@@ -155,6 +155,7 @@ export interface AddVariantModalProps {
   onClose: () => void;
   onSuccess: (newVariant?: any) => void;
   existingBarcodes: Set<string>;
+  existingSkus?: Set<string>;
   onOpenTagModal?: (variant: any) => void;
 }
 

@@ -69,26 +69,77 @@ export function generateBatchBarcodes(count: number, existingBarcodes?: Set<stri
 
 /**
  * Generates a clean structured SKU for a variant.
- * Format: BASE-SIZE-COLOR (e.g. BOTT-CUIR-38-NOIR)
+ * Format: BASE-SIZE-COLOR (e.g. STELLA-26002-ML-MARON)
+ *
+ * - Intelligently splits letter/number transitions (e.g. 'Stella26002' -> 'STELLA' + '26002').
+ * - Preserves full model numbers to avoid false duplicates.
+ * - Supports optional existingSkus set to guarantee collision-free uniqueness with auto-suffixes.
  */
-export function generateVariantSku(productName: string, size: string, color: string): string {
+export function generateVariantSku(
+  productName: string,
+  size: string,
+  color: string,
+  existingSkus?: Set<string> | string[]
+): string {
   const cleanStr = (str: string) =>
-    str
+    (str || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, ' ')
       .trim();
 
-  const nameParts = cleanStr(productName)
+  // Insert space between letter and digit transitions (e.g., 'STELLA26002' -> 'STELLA 26002')
+  const spacedName = cleanStr(productName)
+    .replace(/([A-Z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([A-Z])/g, '$1 $2');
+
+  const nameParts = spacedName
     .split(/\s+/)
     .filter(Boolean)
-    .map((word) => (word.length <= 4 ? word : word.slice(0, 4)));
+    .map((word) => {
+      // Preserve numeric identifiers in full (up to 12 digits)
+      if (/^\d+$/.test(word)) {
+        return word.slice(0, 12);
+      }
+      // Truncate long alphabetic words to 6 chars (e.g. STELLA, CHEMIS, PANTAL)
+      return word.length <= 6 ? word : word.slice(0, 6);
+    });
 
   const baseName = nameParts.length > 0 ? nameParts.join('-') : 'PROD';
-  const cleanSize = cleanStr(size) || 'U';
-  const cleanColor = cleanStr(color) || 'STD';
+  const cleanSize = cleanStr(size).replace(/\s+/g, '') || 'U';
+  const cleanColor = cleanStr(color).replace(/\s+/g, '') || 'STD';
 
-  return `${baseName}-${cleanSize}-${cleanColor}`;
+  const baseCandidate = `${baseName}-${cleanSize}-${cleanColor}`;
+
+  if (!existingSkus) {
+    return baseCandidate;
+  }
+
+  // Case-insensitive lookup set
+  const existingSet =
+    existingSkus instanceof Set
+      ? new Set(Array.from(existingSkus).map((s) => s.toLowerCase().trim()))
+      : new Set((existingSkus || []).map((s) => s.toLowerCase().trim()));
+
+  if (!existingSet.has(baseCandidate.toLowerCase())) {
+    existingSet.add(baseCandidate.toLowerCase());
+    return baseCandidate;
+  }
+
+  // Suffix incrementing if collision found
+  let counter = 1;
+  while (counter < 100) {
+    const candidateWithSuffix = `${baseCandidate}-${counter.toString().padStart(2, '0')}`;
+    if (!existingSet.has(candidateWithSuffix.toLowerCase())) {
+      existingSet.add(candidateWithSuffix.toLowerCase());
+      return candidateWithSuffix;
+    }
+    counter++;
+  }
+
+  const fallback = `${baseCandidate}-${Date.now().toString().slice(-4)}`;
+  existingSet.add(fallback.toLowerCase());
+  return fallback;
 }
 

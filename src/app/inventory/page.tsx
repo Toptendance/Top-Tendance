@@ -874,6 +874,7 @@ export default function InventoryDashboardPage() {
           setAddVariantProduct(null);
         }}
         existingBarcodes={existingBarcodes}
+        existingSkus={existingSkus}
         onOpenTagModal={(variant) => setTagModalVariant(variant)}
       />
 

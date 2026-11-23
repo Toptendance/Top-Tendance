@@ -23,6 +23,7 @@ export function AddVariantModal({
   onClose,
   onSuccess,
   existingBarcodes,
+  existingSkus,
   onOpenTagModal,
 }: AddVariantModalProps) {
   const { showToast } = useToast();
@@ -61,18 +62,18 @@ export function AddVariantModal({
         cost_price: initialCost,
         stock_quantity: '5',
         low_stock_threshold: '5',
-        sku: generateVariantSku(targetProduct.productName, size, color),
+        sku: generateVariantSku(targetProduct.productName, size, color, existingSkus),
         barcode: generateUniqueBarcode(existingBarcodes),
       });
       setAddVariantError(null);
     }
-  }, [targetProduct, existingBarcodes]);
+  }, [targetProduct, existingBarcodes, existingSkus]);
 
   if (!targetProduct) return null;
 
   // Size quick selectors handler
   const handleUpdateSize = (newSize: string) => {
-    const newSku = generateVariantSku(targetProduct.productName, newSize, addVariantForm.color);
+    const newSku = generateVariantSku(targetProduct.productName, newSize, addVariantForm.color, existingSkus);
     setAddVariantForm((prev) => ({
       ...prev,
       size: newSize,
@@ -81,7 +82,7 @@ export function AddVariantModal({
   };
 
   const handleUpdateColor = (newColor: string) => {
-    const newSku = generateVariantSku(targetProduct.productName, addVariantForm.size, newColor);
+    const newSku = generateVariantSku(targetProduct.productName, addVariantForm.size, newColor, existingSkus);
     setAddVariantForm((prev) => ({
       ...prev,
       color: newColor,
@@ -116,7 +117,7 @@ export function AddVariantModal({
         addVariantForm.barcode.trim() || generateUniqueBarcode(existingBarcodes);
       const skuToUse =
         addVariantForm.sku.trim() ||
-        generateVariantSku(targetProduct.productName, trimmedSize, addVariantForm.color);
+        generateVariantSku(targetProduct.productName, trimmedSize, addVariantForm.color, existingSkus);
 
       // 1. Insert into variants
       const { data: newVariant, error: vErr } = await supabase
@@ -179,8 +180,15 @@ export function AddVariantModal({
       onClose();
     } catch (err: any) {
       console.error('Failed to add variant:', err);
-      setAddVariantError(err.message || "Erreur lors de l'ajout de la variante");
-      showToast(err.message || "Erreur lors de l'ajout de la variante", 'error');
+      const errMsg = (err?.message || err?.details || '').toLowerCase();
+      let displayError = err.message || "Erreur lors de l'ajout de la variante";
+      if (errMsg.includes('variants_barcode_key') || (errMsg.includes('barcode') && errMsg.includes('key'))) {
+        displayError = 'Ce code-barres est déjà utilisé par un autre article.';
+      } else if (err?.code === '23505' || errMsg.includes('variants_sku_key') || errMsg.includes('sku')) {
+        displayError = 'Ce SKU est déjà utilisé par un autre article. Modifiez-le ou régénérez-le.';
+      }
+      setAddVariantError(displayError);
+      showToast(displayError, 'error');
     } finally {
       setIsSubmitting(false);
     }
