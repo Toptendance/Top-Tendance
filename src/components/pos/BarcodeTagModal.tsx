@@ -300,8 +300,8 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
         id="print-sheets-container"
         className="hidden print:block"
         style={{
-          left: `${offsetX / 1.1428}mm`,
-          top: `${offsetY / 1.1428}mm`,
+          left: `${offsetX / 1.30}mm`,
+          top: `${offsetY / 1.30}mm`,
         }}
       >
         {isTestPage ? (
@@ -688,7 +688,7 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
           <ul className="list-disc list-inside space-y-0.5 text-[10px] text-blue-900/90 pl-1">
             <li><b>Format de papier :</b> A4</li>
             <li><b>Marges :</b> Aucune (None)</li>
-            <li><b>Échelle :</b> 100% (Par défaut / Ne pas adapter à la page)</li>
+            <li><b>⚠️ Échelle Chrome :</b> 100% / Par défaut (Default) — <i>ne pas utiliser d'échelle personnalisée ni Ajuster</i></li>
             <li><i>Si décalage matériel Canon : activer &quot;Sans bordure&quot; ou utiliser l&apos;ajusteur de décalage en mm.</i></li>
           </ul>
         </div>

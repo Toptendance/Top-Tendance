@@ -15,7 +15,7 @@
 | **Client / SSR** | `@supabase/ssr` (`createBrowserClient`) | Cookie-based session sharing between client & middleware |
 | **Middleware** | `src/middleware.ts` (`@supabase/ssr`) | Protects `/account`, `/pos`, `/inventory`, `/reports` |
 | **Icons & Audio** | `lucide-react`, Web Audio API (`posAudio.ts`) | Barcode scanner sounds (success / error beeps) |
-| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2010 inkjet calibration & zoom compensation (1.1428) for true 100% scale |
+| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2010 inkjet calibration & zoom compensation (1.30) baked in for true 100% physical scale |
 | **Currency** | Tunisian Dinar (`TND` / `DT`) | All financial DB columns: `numeric(12,3)` |
 | **Production Domain** | `https://toptendance.net` | Supabase Site URL & Redirect URLs configured |
 
@@ -98,7 +98,7 @@ src/
 │   ├── manager/
 │   │   └── CashierManagementSection.tsx ← Manager cashier team management (roster table, add modal, status toggle, credentials reset)
 │   ├── pos/
-│   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2010 offset calibration, dynamic multi-page layout, zoom compensation (1.1428), and auto "mark as printed" tracking
+│   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2010 offset calibration, dynamic multi-page layout, baked zoom compensation (1.30), and auto "mark as printed" tracking
 │   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
 │   │   ├── PaymentDrawer.tsx   ← Cash / Card / Credit sale ("Paiement Différé") drawer with change calculator & debtor customer inputs
 │   │   ├── ProductSearchDrawer.tsx ← Manual variant & SKU search modal
@@ -235,10 +235,18 @@ src/
     - **Phantom Blank Page Fix**: Changed `@media print` rule `html, body { height: 297mm !important; }` to `height: auto !important;`, preventing overflow-induced empty 2nd pages.
     - **Calibration Offset Architecture**: Relocated offset positioning from individual `.a4-print-sheet` transforms to `#print-sheets-container` div (`left`/`top`), avoiding subpixel rounding and ensuring uniform page offsets.
     - **Print Cell Flex Stretch**: Added `display: flex !important; align-items: stretch !important;` to `.a4-print-cell` in `globals.css`.
-  - `print-scale-fix-checklist.md` 🔄 — (2026-11-20):
-    - **Chrome vs. Canon G2010 Print Scale Mismatch**: Diagnosed 87.5% physical print ratio (4 columns spanning 3.5 sticker cells at 100% scale).
-    - **Container Zoom Compensation**: Injected `zoom: 1.1428 !important;` (1 / 0.875) on `#print-sheets-container` in `@media print` (`globals.css`) so Chrome prints true physical 210×297mm without requiring manual print dialog scaling.
-    - **Calibration Offset Scale Normalization**: Scaled offset inputs by `/ 1.1428` in `BarcodeTagModal.tsx` (`left: ${offsetX / 1.1428}mm`, `top: ${offsetY / 1.1428}mm`) so 1mm user input retains exact 1:1 physical millimeter movement under zoomed layout.
+  - `print-scale-fix-checklist.md` & `checklist_herma_scale_130_baked.md` ✅ — (Updated 2026-11-24):
+    - **Chrome vs. Canon G2010 Print Scale & Alignment (HERMA 8698, 52.5mm × 29.7mm)**: Diagnosed physical driver scale down to $\approx 161.5\text{ mm}$ across A4 on Chrome Default (leaving blank right margin). Physical print tests confirmed 130% scale stretches 4 columns edge-to-edge and perfectly aligns inside pre-cut sticker borders.
+    - **Container Zoom Compensation**: Injected `zoom: 1.30 !important;` directly on `#print-sheets-container` in `@media print` (`src/app/globals.css`) so Chrome prints true physical 210×297mm on **Default (100%)** scale without requiring manual zoom input.
+    - **Calibration Offset Scale Normalization**: Scaled offset inputs by `/ 1.30` in `BarcodeTagModal.tsx` (`left: ${offsetX / 1.30}mm`, `top: ${offsetY / 1.30}mm`) ensuring 1mm slider movement corresponds to exactly 1.0mm physical shift on paper.
+  - `cheklist.md` ✅ — (2026-11-23):
+    - **SKU Generation & Collision Hardening**:
+      - Word/number boundary splitting in `src/utils/barcodeGenerator.ts` (e.g. `Stella26002` → `STELLA` + `26002`).
+      - Preserved complete numeric models (no 4-character truncation on numbers).
+      - Auto-increment collision suffix (`-01`, `-02`) against existing database SKUs.
+      - Case-insensitive duplicate check in `NewProductModal.tsx` and `ProductVariantModals.tsx`.
+      - Real-time auto-synchronization of SKU on Size/Color changes.
+      - Granular DB error handling distinguishing `variants_sku_key` from `variants_barcode_key`.
 - **Known issues / caveats**:
   - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
   - `returns` / `return_items` tables added 2026-11-09 (not in original schema)
