@@ -52,7 +52,6 @@ export function SingleLabelItem({
   const isLeftCol = colIndex === 0;
   const isRightCol = colIndex === 3;
 
-  const isEdgeCell = isTopRow || isBottomRow || isLeftCol || isRightCol;
   const jsBarcodeHeight = isBottomRow ? 28 : isTopRow ? 30 : 40;
   const jsBarcodeFontSize = isBottomRow ? 8 : isTopRow ? 8.5 : 9;
   const jsBarcodeTextMargin = isBottomRow || isTopRow ? 1 : 2;
@@ -79,12 +78,7 @@ export function SingleLabelItem({
           margin: 0,
         });
 
-        // Set viewBox for responsive vector scaling without distortion or clipping
-        const widthAttr = svgRef.current.getAttribute('width');
-        const heightAttr = svgRef.current.getAttribute('height');
-        if (widthAttr && heightAttr) {
-          svgRef.current.setAttribute('viewBox', `0 0 ${widthAttr} ${heightAttr}`);
-        }
+        // JsBarcode 3.12.3 already writes a valid unitless viewBox; no override needed.
       } catch (err) {
         console.error('JsBarcode render error in SingleLabelItem:', err);
       }
@@ -138,7 +132,7 @@ export function SingleLabelItem({
           ref={svgRef}
           className="h-auto block"
           style={{
-            width: isEdgeCell ? '43mm' : '100%',
+            width: '43mm',
             maxHeight: svgMaxHeight,
           }}
         />
