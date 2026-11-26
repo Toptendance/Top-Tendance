@@ -31,6 +31,8 @@ interface SingleLabelItemProps {
   selling_price: number;
   isTest?: boolean;
   cellIndex?: number;
+  rowIndex?: number;
+  colIndex?: number;
 }
 
 export function SingleLabelItem({
@@ -42,7 +44,20 @@ export function SingleLabelItem({
   selling_price,
   isTest = false,
   cellIndex,
+  rowIndex = 1,
+  colIndex = 1,
 }: SingleLabelItemProps) {
+  const isTopRow = rowIndex === 0;
+  const isBottomRow = rowIndex === 9;
+  const isLeftCol = colIndex === 0;
+  const isRightCol = colIndex === 3;
+
+  const isEdgeCell = isTopRow || isBottomRow || isLeftCol || isRightCol;
+  const jsBarcodeHeight = isBottomRow ? 28 : isTopRow ? 30 : 40;
+  const jsBarcodeFontSize = isBottomRow ? 8 : isTopRow ? 8.5 : 9;
+  const jsBarcodeTextMargin = isBottomRow || isTopRow ? 1 : 2;
+  const svgMaxHeight = isBottomRow ? '10.5mm' : isTopRow ? '11.5mm' : '14mm';
+
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -56,11 +71,11 @@ export function SingleLabelItem({
         JsBarcode(svgRef.current, cleanBarcode, {
           format: 'CODE128',
           width: barWidth,
-          height: 40, // ~10-11mm height for fast laser/camera scanner decoding
+          height: jsBarcodeHeight,
           displayValue: true,
-          fontSize: 9,
+          fontSize: jsBarcodeFontSize,
           font: 'monospace',
-          textMargin: 2,
+          textMargin: jsBarcodeTextMargin,
           margin: 0,
         });
 
@@ -74,7 +89,7 @@ export function SingleLabelItem({
         console.error('JsBarcode render error in SingleLabelItem:', err);
       }
     }
-  }, [barcode, isTest]);
+  }, [barcode, isTest, jsBarcodeHeight, jsBarcodeFontSize, jsBarcodeTextMargin]);
 
   if (isTest) {
     return (
@@ -89,14 +104,24 @@ export function SingleLabelItem({
     );
   }
 
+  const paddingTop = isTopRow ? '5mm' : isBottomRow ? '1.0mm' : '1.5mm';
+  const paddingBottom = isBottomRow ? '7mm' : isTopRow ? '1.0mm' : '1.5mm';
+  const paddingLeft = isLeftCol ? '5mm' : '2.5mm';
+  const paddingRight = isRightCol ? '5mm' : '2.5mm';
+
   return (
     <div
       className="w-[52.5mm] h-[29.7mm] bg-white flex flex-col justify-between items-center text-center select-none box-border overflow-hidden"
-      style={{ padding: '1.5mm 2.5mm' }}
+      style={{
+        paddingTop,
+        paddingBottom,
+        paddingLeft,
+        paddingRight,
+      }}
     >
       {/* Product Name & SKU / Variant */}
       <div className="w-full leading-tight">
-        <p className="text-[9px] font-black uppercase tracking-tight text-black truncate w-full" title={productName}>
+        <p className={`${isBottomRow ? 'text-[8.5px]' : 'text-[9px]'} font-black uppercase tracking-tight text-black truncate w-full`} title={productName}>
           {productName}
         </p>
         <div className="flex justify-between items-center text-[7.5px] text-black px-0.5 font-mono">
@@ -109,13 +134,20 @@ export function SingleLabelItem({
 
       {/* Code128 Vector Barcode SVG with guaranteed quiet zones */}
       <div className="w-full flex justify-center items-center overflow-hidden">
-        <svg ref={svgRef} className="w-full h-auto block" style={{ maxHeight: '14mm' }} />
+        <svg
+          ref={svgRef}
+          className="h-auto block"
+          style={{
+            width: isEdgeCell ? '43mm' : '100%',
+            maxHeight: svgMaxHeight,
+          }}
+        />
       </div>
 
       {/* Brand & Price */}
       <div className="w-full flex justify-between items-baseline px-0.5 border-t border-gray-300 pt-0.5 leading-none">
         <span className="text-[7.5px] font-extrabold uppercase tracking-wider text-black">Top Tendance</span>
-        <span className="text-[10px] font-black text-black font-mono tracking-tight">
+        <span className={`${isBottomRow ? 'text-[9.5px]' : 'text-[10px]'} font-black text-black font-mono tracking-tight`}>
           {Number(selling_price).toFixed(3)} DT
         </span>
       </div>
@@ -324,7 +356,7 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
         ) : (
           printPages.map((page, pageIdx) => (
             <div key={`page-${pageIdx}`} className="a4-print-sheet">
-              {page.map((cell) => (
+              {page.map((cell, cellIndexInPage) => (
                 <div key={cell.id} className="a4-print-cell">
                   {cell.type === 'label' && cell.item ? (
                     <SingleLabelItem
@@ -334,6 +366,8 @@ export default function BarcodeTagModal({ variant, onClose, onPrinted }: Barcode
                       size={cell.item.size}
                       color={cell.item.color}
                       selling_price={cell.item.selling_price}
+                      rowIndex={Math.floor(cellIndexInPage / 4)}
+                      colIndex={cellIndexInPage % 4}
                     />
                   ) : (
                     // Blank placeholder cell for alignment

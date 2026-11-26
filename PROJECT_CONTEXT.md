@@ -15,7 +15,7 @@
 | **Client / SSR** | `@supabase/ssr` (`createBrowserClient`) | Cookie-based session sharing between client & middleware |
 | **Middleware** | `src/middleware.ts` (`@supabase/ssr`) | Protects `/account`, `/pos`, `/inventory`, `/reports` |
 | **Icons & Audio** | `lucide-react`, Web Audio API (`posAudio.ts`) | Barcode scanner sounds (success / error beeps) |
-| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2010 inkjet calibration & zoom compensation (1.30) baked in for true 100% physical scale |
+| **Barcodes** | `jsbarcode` (Code-128 / EAN-13) | HERMA A4/40 sticker sheets (52.5mm × 29.7mm, 4 cols × 10 rows), Canon G2010 inkjet calibration & zoom compensation (1.30) baked in for true 100% physical scale, dynamic edge padding & quiet-zone geometry |
 | **Currency** | Tunisian Dinar (`TND` / `DT`) | All financial DB columns: `numeric(12,3)` |
 | **Production Domain** | `https://toptendance.net` | Supabase Site URL & Redirect URLs configured |
 
@@ -98,7 +98,7 @@ src/
 │   ├── manager/
 │   │   └── CashierManagementSection.tsx ← Manager cashier team management (roster table, add modal, status toggle, credentials reset)
 │   ├── pos/
-│   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2010 offset calibration, dynamic multi-page layout, baked zoom compensation (1.30), and auto "mark as printed" tracking
+│   │   ├── BarcodeTagModal.tsx ← Multi-item batch & single A4 sticker printing (HERMA 40, 52.5mm × 29.7mm) with Canon G2010 offset calibration, dynamic multi-page layout, baked zoom compensation (1.30), dynamic edge cell padding & quiet-zone barcode geometry, and auto "mark as printed" tracking
 │   │   ├── DeliveryReceivingModal.tsx ← Delivery receiving popup calling receive_stock RPC
 │   │   ├── PaymentDrawer.tsx   ← Cash / Card / Credit sale ("Paiement Différé") drawer with change calculator & debtor customer inputs
 │   │   ├── ProductSearchDrawer.tsx ← Manual variant & SKU search modal
@@ -247,6 +247,11 @@ src/
       - Case-insensitive duplicate check in `NewProductModal.tsx` and `ProductVariantModals.tsx`.
       - Real-time auto-synchronization of SKU on Size/Color changes.
       - Granular DB error handling distinguishing `variants_sku_key` from `variants_barcode_key`.
+  - `chek list.md` ✅ — Steps 1, 2, 3 completed (2026-11-26):
+    - **Dynamic Edge Padding & Quiet-Zone Geometry for HERMA A4/40 (52.5mm × 29.7mm) on Canon G2010**:
+      - **Step 1 (Prop Plumbing & JSX Page Loop Coordinate Mapping)**: Added `rowIndex` and `colIndex` to `SingleLabelItemProps`. Mapped row (`Math.floor(cellIndexInPage / 4)`) and column (`cellIndexInPage % 4`) cleanly within `printPages.map((page, pageIdx) => page.map((cell, cellIndexInPage) => ...))` so indices strictly restart at 0 on every page.
+      - **Step 2 (Dynamic Edge Padding)**: Outer edge cells dynamically apply custom safe-zone padding (`isTopRow ? '5mm' : ...`, `isBottomRow ? '7mm' : ...`, `isLeftCol ? '5mm' : '2.5mm'`, `isRightCol ? '5mm' : '2.5mm'`) while retaining standard interior padding (`1.5mm 2.5mm`), keeping outer sticker borders and printer grip margins clean without altering grid dimensions.
+      - **Step 3 (Barcode Vector Geometry, Width & Spacing Optimization)**: Dynamic vector barcode height (`jsBarcodeHeight: isBottomRow ? 28 : isTopRow ? 30 : 40`), font size (`8` / `8.5` / `9`), text margin (`1` / `2`), SVG max height (`10.5mm` / `11.5mm` / `14mm`), and fixed `43mm` width for edge cells ensuring $\ge 10$ modules quiet zone. Responsive typography fine-tuning on bottom row product title (`8.5px`) and price (`9.5px`) ensuring clean clearance above bottom sticker margins. `useEffect` dependencies updated to prevent stale closures.
 - **Known issues / caveats**:
   - `sale_items` table has **no `created_at` column** — do not use it in queries on that table
   - `returns` / `return_items` tables added 2026-11-09 (not in original schema)
