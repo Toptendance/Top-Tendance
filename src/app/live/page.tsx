@@ -97,8 +97,46 @@ function LiveContent() {
   const [settings, setSettings] = useState<LiveSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const hasPlayedSoundRef = useRef(false);
   const wasPositiveDiffRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const autoplayBlockedRef = useRef(false);
+
+  // Attempt unmuted autoplay for OBS Studio; fallback to muted autoplay if browser blocks
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    function handleFirstInteraction() {
+      if (!autoplayBlockedRef.current || !videoRef.current) return;
+      autoplayBlockedRef.current = false;
+      videoRef.current.muted = false;
+      videoRef.current.play().catch(() => {});
+      setSoundEnabled(true);
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+    }
+
+    async function initVideoPlayback() {
+      if (!video) return;
+      try {
+        video.muted = false;
+        await video.play();
+        autoplayBlockedRef.current = false;
+        setSoundEnabled(true);
+      } catch {
+        video.muted = true;
+        autoplayBlockedRef.current = true;
+        setSoundEnabled(false);
+        video.play().catch(() => {});
+        window.addEventListener('pointerdown', handleFirstInteraction, { once: true });
+      }
+    }
+
+    initVideoPlayback();
+
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+    };
+  }, []);
 
   // Manager Authentication & Role State
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -167,36 +205,6 @@ function LiveContent() {
     seconds: '00',
     totalSeconds: 0,
   });
-
-  // 1. Synthesize Warm Celebratory Chime via Web Audio API
-  const playLiveChime = useCallback(() => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((freq, index) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.18);
-
-        gain.gain.setValueAtTime(0, ctx.currentTime + index * 0.18);
-        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + index * 0.18 + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + index * 0.18 + 1.2);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(ctx.currentTime + index * 0.18);
-        osc.stop(ctx.currentTime + index * 0.18 + 1.3);
-      });
-    } catch (e) {
-      console.warn('Audio chime playback restricted by browser policy:', e);
-    }
-  }, []);
 
   // 2. Fetch User Profile & Role Detection
   useEffect(() => {
@@ -275,7 +283,7 @@ function LiveContent() {
         } else if (isManagerAuthOpen) {
           setIsManagerAuthOpen(false);
         } else if (document.fullscreenElement) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         }
       }
     }
@@ -343,7 +351,6 @@ function LiveContent() {
                 wasPositiveDiffRef.current = ts > Date.now();
               }
             }
-            hasPlayedSoundRef.current = false;
           }
         }
       )
@@ -376,13 +383,6 @@ function LiveContent() {
         wasPositiveDiffRef.current = true;
       }
 
-      if (remaining.totalSeconds === 0 && wasPositiveDiffRef.current && !hasPlayedSoundRef.current) {
-        hasPlayedSoundRef.current = true;
-        if (soundEnabled) {
-          playLiveChime();
-        }
-      }
-
       setTimeLeft(remaining);
     }
 
@@ -390,7 +390,7 @@ function LiveContent() {
     const timer = setInterval(calculateTime, 250);
 
     return () => clearInterval(timer);
-  }, [targetTimestamp, soundEnabled, playLiveChime]);
+  }, [targetTimestamp]);
 
   // Handle Manager In-Page Authentication
   const handleManagerLogin = async (e: React.FormEvent) => {
@@ -483,7 +483,6 @@ function LiveContent() {
         totalSeconds: diff,
       });
       wasPositiveDiffRef.current = diff > 0;
-      hasPlayedSoundRef.current = false;
 
       // Close settings drawer immediately
       setIsSettingsOpen(false);
@@ -516,9 +515,9 @@ function LiveContent() {
   // Toggle Native Fullscreen
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
   };
 
@@ -583,19 +582,27 @@ function LiveContent() {
 
   return (
     <div
-      className={`fixed inset-0 z-[100] w-screen h-screen overflow-hidden flex flex-col justify-between items-center select-none transition-colors duration-700 ${
-        isLightTheme ? 'text-charcoal' : 'text-[#F5F0FF]'
-      }`}
+      className={`fixed inset-0 z-[100] w-screen h-screen overflow-hidden flex flex-col justify-between items-center select-none transition-colors duration-700 ${isLightTheme ? 'text-charcoal' : 'text-[#F5F0FF]'
+        }`}
       style={backgroundStyle}
     >
+      <video
+        ref={videoRef}
+        src="/videos/countdown-bg.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover -z-10"
+      />
+
       {/* Top ambient glow bar (hidden in transparent mode) */}
       {!isTransparentMode && (
         <div
-          className={`absolute top-0 inset-x-0 h-[3px] transition-all duration-700 ${
-            isLive
+          className={`absolute top-0 inset-x-0 h-[3px] transition-all duration-700 ${isLive
               ? 'bg-gradient-to-r from-transparent via-[#E8265F] to-transparent shadow-[0_0_20px_#E8265F]'
               : 'bg-gradient-to-r from-transparent via-[#E8265F]/60 to-transparent'
-          }`}
+            }`}
         />
       )}
 
@@ -604,11 +611,10 @@ function LiveContent() {
         <div className="absolute top-6 right-6 z-50 animate-fadeIn">
           <button
             onClick={handleOpenSettings}
-            className={`group flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all shadow-lg backdrop-blur-md ${
-              isLightTheme
+            className={`group flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all shadow-lg backdrop-blur-md ${isLightTheme
                 ? 'bg-white/80 hover:bg-[#E8265F]/10 border-charcoal/10 hover:border-[#E8265F]/40 text-charcoal'
                 : 'bg-white/[0.06] hover:bg-[#E8265F]/20 border-white/[0.12] hover:border-[#E8265F]/50 text-white/70 hover:text-white'
-            }`}
+              }`}
             title="Paramètres du Live (Réservé au Manager)"
             aria-label="Configuration Manager"
           >
@@ -620,32 +626,28 @@ function LiveContent() {
         </div>
       )}
 
-      {/* Top Header — Top Tendance Luxury Brand Mark */}
-      <header className="w-full pt-8 sm:pt-10 px-6 flex flex-col items-center text-center z-10">
+      {/* Top Header — Top Tendance Luxury Brand Mark (Safe Zone for IG / FB top bars) */}
+      <header className="w-full pt-12 sm:pt-14 md:pt-10 px-4 sm:px-6 flex flex-col items-center text-center z-10">
         <div
           onClick={() => {
             if (!isManager && !isCleanMode) setIsManagerAuthOpen(true);
           }}
-          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border backdrop-blur-md mb-3 transition-all duration-500 ${
-            !isCleanMode ? 'cursor-pointer' : ''
-          } ${
-            isLive
+          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border backdrop-blur-md mb-3 transition-all duration-500 ${!isCleanMode ? 'cursor-pointer' : ''
+            } ${isLive
               ? 'bg-[#E8265F]/20 border-[#E8265F]/50 shadow-[0_0_25px_rgba(232,38,95,0.5)]'
               : isLightTheme
-              ? 'bg-black/[0.04] border-black/[0.08] hover:border-black/20'
-              : 'bg-white/[0.04] border-white/[0.08] hover:border-white/20'
-          }`}
+                ? 'bg-black/[0.04] border-black/[0.08] hover:border-black/20'
+                : 'bg-white/[0.04] border-white/[0.08] hover:border-white/20'
+            }`}
           title={!isCleanMode ? (isManager ? 'Connecté en tant que Manager' : 'Connexion Manager (Ctrl + Shift + M)') : undefined}
         >
           <span
-            className={`w-2.5 h-2.5 rounded-full ${
-              isLive ? 'bg-[#E8265F] animate-ping' : 'bg-[#E8265F] animate-pulse'
-            }`}
+            className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-[#E8265F] animate-ping' : 'bg-[#E8265F] animate-pulse'
+              }`}
           />
           <span
-            className={`text-[10px] sm:text-xs font-bold tracking-[0.22em] uppercase ${
-              isLive ? 'text-white' : isLightTheme ? 'text-charcoal/80' : 'text-white/70'
-            }`}
+            className={`text-[10px] sm:text-xs font-bold tracking-[0.22em] uppercase ${isLive ? 'text-white' : isLightTheme ? 'text-charcoal/80' : 'text-white/70'
+              }`}
           >
             {isLive ? 'EN DIRECT MAINTENANT' : 'Événement Officiel'}
           </span>
@@ -655,28 +657,26 @@ function LiveContent() {
           onClick={() => {
             if (!isManager && !isCleanMode) setIsManagerAuthOpen(true);
           }}
-          className={`font-serif text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.3em] uppercase drop-shadow-sm ${
-            !isCleanMode ? 'cursor-pointer' : ''
-          } ${
-            isLightTheme ? 'text-charcoal' : 'text-white/95 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]'
-          }`}
+          className={`font-serif text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.25em] sm:tracking-[0.3em] uppercase drop-shadow-sm ${!isCleanMode ? 'cursor-pointer' : ''
+            } ${isLightTheme ? 'text-charcoal' : 'text-white/95 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]'
+            }`}
         >
           TOP TENDANCE
         </h1>
-        <p className="mt-1 text-[11px] sm:text-xs tracking-[0.25em] uppercase text-[#D4AF37] font-semibold">
+        <p className="mt-1 text-[10px] sm:text-xs tracking-[0.25em] uppercase text-[#D4AF37] font-semibold">
           Maison de Mode • Tunisie
         </p>
 
         {/* Delicate divider ornament */}
-        <div className="mt-3 flex items-center gap-3">
-          <div className={`w-12 h-[1px] bg-gradient-to-r from-transparent ${isLightTheme ? 'to-charcoal/20' : 'to-white/20'}`} />
+        <div className="mt-2.5 sm:mt-3 flex items-center gap-3">
+          <div className={`w-10 sm:w-12 h-[1px] bg-gradient-to-r from-transparent ${isLightTheme ? 'to-charcoal/20' : 'to-white/20'}`} />
           <div className="w-1.5 h-1.5 rotate-45 border border-[#D4AF37]/70 bg-[#D4AF37]/30" />
-          <div className={`w-12 h-[1px] bg-gradient-to-l from-transparent ${isLightTheme ? 'to-charcoal/20' : 'to-white/20'}`} />
+          <div className={`w-10 sm:w-12 h-[1px] bg-gradient-to-l from-transparent ${isLightTheme ? 'to-charcoal/20' : 'to-white/20'}`} />
         </div>
       </header>
 
-      {/* Main Center Stage */}
-      <main className="flex-1 w-full max-w-6xl px-4 sm:px-6 flex flex-col items-center justify-center text-center z-10">
+      {/* Main Center Stage (Instagram / Facebook Safe-Zone Centered: Clearance for Comments & Header) */}
+      <main className="flex-1 w-full max-w-5xl px-3 sm:px-6 flex flex-col items-center justify-center text-center z-10 py-4 sm:py-6 my-auto">
         {loading ? (
           <div className="flex flex-col items-center gap-4">
             <div className="w-10 h-10 border-2 border-[#E8265F]/30 border-t-[#E8265F] rounded-full animate-spin" />
@@ -689,103 +689,99 @@ function LiveContent() {
             role="alert"
             aria-live="assertive"
           >
-            <div className="inline-flex items-center gap-3 px-6 py-2.5 rounded-full bg-[#E8265F]/20 border border-[#E8265F]/40 backdrop-blur-md mb-6 sm:mb-8 animate-pulse shadow-[0_0_40px_rgba(232,38,95,0.4)]">
-              <span className="w-3.5 h-3.5 rounded-full bg-[#E8265F] animate-ping" />
+            <div className="inline-flex items-center gap-3 px-5 sm:px-6 py-2 sm:py-2.5 rounded-full bg-[#E8265F]/20 border border-[#E8265F]/40 backdrop-blur-md mb-5 sm:mb-8 animate-pulse shadow-[0_0_40px_rgba(232,38,95,0.4)]">
+              <span className="w-3 sm:w-3.5 h-3 sm:h-3.5 rounded-full bg-[#E8265F] animate-ping" />
               <span className="text-xs sm:text-sm md:text-base font-bold tracking-[0.25em] uppercase text-white">
                 🔴 EN DIRECT SUR FACEBOOK &amp; TIKTOK
               </span>
             </div>
 
-            <h2 className="font-serif text-4xl sm:text-6xl md:text-8xl font-black tracking-tight drop-shadow-[0_4px_40px_rgba(232,38,95,0.7)] leading-tight mb-4 sm:mb-6">
+            <h2 className="font-serif text-3xl sm:text-6xl md:text-8xl font-black tracking-tight drop-shadow-[0_4px_40px_rgba(232,38,95,0.7)] leading-tight mb-3 sm:mb-6">
               NOUS SOMMES EN DIRECT !
             </h2>
 
-            <p className="text-base sm:text-xl md:text-2xl opacity-90 font-light tracking-wide max-w-2xl leading-relaxed">
+            <p className="text-sm sm:text-xl md:text-2xl opacity-90 font-light tracking-wide max-w-2xl leading-relaxed">
               La diffusion a commencé. Rejoignez-nous dès maintenant sur nos réseaux officiels pour découvrir la collection !
             </p>
           </div>
         ) : (
           /* COUNTDOWN CLOCK DISPLAY */
           <div className="flex flex-col items-center w-full">
-            <h2 className={`font-serif text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-8 sm:mb-12 ${
-              isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]'
-            }`}>
+            <h2 className={`font-serif text-xl sm:text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-6 sm:mb-10 ${isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]'
+              }`}>
               {title}
             </h2>
 
             <div
-              className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 lg:gap-8 w-full max-w-4xl"
+              className="flex items-center justify-center gap-1.5 sm:gap-4 md:gap-6 lg:gap-8 w-full max-w-4xl"
               aria-live="off"
             >
               {/* Jours */}
-              <div className="flex flex-col items-center min-w-[70px] sm:min-w-[120px] md:min-w-[150px] lg:min-w-[180px]">
-                <span className={`font-sans font-black tabular-nums tracking-tight text-5xl sm:text-7xl md:text-8xl lg:text-9xl leading-none ${
-                  isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
-                }`}>
+              <div className="flex flex-col items-center min-w-[58px] sm:min-w-[100px] md:min-w-[140px] lg:min-w-[180px]">
+                <span className={`font-sans font-black tabular-nums tracking-tight text-4xl sm:text-6xl md:text-8xl lg:text-9xl leading-none ${isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
+                  }`}>
                   {timeLeft.days}
                 </span>
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold tracking-[0.25em] uppercase opacity-50 mt-2 sm:mt-4">
+                <span className="text-[9px] sm:text-xs md:text-sm font-bold tracking-[0.2em] sm:tracking-[0.25em] uppercase opacity-60 mt-1.5 sm:mt-4">
                   Jours
                 </span>
               </div>
 
-              <span className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-4 sm:-mt-6 select-none opacity-80">
+              <span className="text-2xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-3 sm:-mt-6 select-none opacity-80">
                 :
               </span>
 
               {/* Heures */}
-              <div className="flex flex-col items-center min-w-[70px] sm:min-w-[120px] md:min-w-[150px] lg:min-w-[180px]">
-                <span className={`font-sans font-black tabular-nums tracking-tight text-5xl sm:text-7xl md:text-8xl lg:text-9xl leading-none ${
-                  isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
-                }`}>
+              <div className="flex flex-col items-center min-w-[58px] sm:min-w-[100px] md:min-w-[140px] lg:min-w-[180px]">
+                <span className={`font-sans font-black tabular-nums tracking-tight text-4xl sm:text-6xl md:text-8xl lg:text-9xl leading-none ${isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
+                  }`}>
                   {timeLeft.hours}
                 </span>
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold tracking-[0.25em] uppercase opacity-50 mt-2 sm:mt-4">
+                <span className="text-[9px] sm:text-xs md:text-sm font-bold tracking-[0.2em] sm:tracking-[0.25em] uppercase opacity-60 mt-1.5 sm:mt-4">
                   Heures
                 </span>
               </div>
 
-              <span className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-4 sm:-mt-6 select-none opacity-80">
+              <span className="text-2xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-3 sm:-mt-6 select-none opacity-80">
                 :
               </span>
 
               {/* Minutes */}
-              <div className="flex flex-col items-center min-w-[70px] sm:min-w-[120px] md:min-w-[150px] lg:min-w-[180px]">
-                <span className={`font-sans font-black tabular-nums tracking-tight text-5xl sm:text-7xl md:text-8xl lg:text-9xl leading-none ${
-                  isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
-                }`}>
+              <div className="flex flex-col items-center min-w-[58px] sm:min-w-[100px] md:min-w-[140px] lg:min-w-[180px]">
+                <span className={`font-sans font-black tabular-nums tracking-tight text-4xl sm:text-6xl md:text-8xl lg:text-9xl leading-none ${isLightTheme ? 'text-charcoal' : 'text-white drop-shadow-[0_4px_20px_rgba(255,255,255,0.15)]'
+                  }`}>
                   {timeLeft.minutes}
                 </span>
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold tracking-[0.25em] uppercase opacity-50 mt-2 sm:mt-4">
+                <span className="text-[9px] sm:text-xs md:text-sm font-bold tracking-[0.2em] sm:tracking-[0.25em] uppercase opacity-60 mt-1.5 sm:mt-4">
                   Minutes
                 </span>
               </div>
 
-              <span className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-4 sm:-mt-6 select-none opacity-80">
+              <span className="text-2xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-[#E8265F] -mt-3 sm:-mt-6 select-none opacity-80">
                 :
               </span>
 
               {/* Secondes */}
-              <div className="flex flex-col items-center min-w-[70px] sm:min-w-[120px] md:min-w-[150px] lg:min-w-[180px]">
-                <span className="font-sans font-black tabular-nums tracking-tight text-5xl sm:text-7xl md:text-8xl lg:text-9xl text-[#E8265F] drop-shadow-[0_4px_25px_rgba(232,38,95,0.4)] leading-none">
+              <div className="flex flex-col items-center min-w-[58px] sm:min-w-[100px] md:min-w-[140px] lg:min-w-[180px]">
+                <span className="font-sans font-black tabular-nums tracking-tight text-4xl sm:text-6xl md:text-8xl lg:text-9xl text-[#E8265F] drop-shadow-[0_4px_25px_rgba(232,38,95,0.4)] leading-none">
                   {timeLeft.seconds}
                 </span>
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold tracking-[0.25em] uppercase text-[#E8265F]/80 mt-2 sm:mt-4">
+                <span className="text-[9px] sm:text-xs md:text-sm font-bold tracking-[0.2em] sm:tracking-[0.25em] uppercase text-[#E8265F]/80 mt-1.5 sm:mt-4">
                   Secondes
                 </span>
               </div>
             </div>
 
-            <p className="mt-8 sm:mt-12 text-sm sm:text-base md:text-lg opacity-70 font-light tracking-wide max-w-xl">
+            <p className="mt-6 sm:mt-10 text-xs sm:text-base md:text-lg opacity-75 font-light tracking-wide max-w-xl px-2">
               {subtitle}
             </p>
           </div>
         )}
       </main>
 
-      {/* Bottom Footer Info & Quick Controls (Hidden in Clean Mode) */}
+      {/* Bottom Footer Info & Quick Controls (Hidden in Clean Mode, Safe Clearance for IG/FB Comments) */}
       {!isCleanMode && (
-        <footer className="w-full pb-6 sm:pb-8 px-6 flex items-center justify-between z-10 opacity-60 text-xs tracking-wider">
+        <footer className="w-full pb-8 sm:pb-8 px-4 sm:px-6 flex items-center justify-between z-10 opacity-70 text-[11px] sm:text-xs tracking-wider">
           <p className="flex items-center gap-2">
             <span>toptendance.net</span>
             <span>•</span>
@@ -796,11 +792,10 @@ function LiveContent() {
             {/* Quick Fullscreen Button */}
             <button
               onClick={toggleFullscreen}
-              className={`p-2 rounded-full border transition ${
-                isLightTheme
+              className={`p-2 rounded-full border transition ${isLightTheme
                   ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-charcoal'
                   : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08] text-white'
-              }`}
+                }`}
               title={isFullscreen ? 'Quitter le Plein Écran' : 'Activer le Plein Écran'}
               aria-label={isFullscreen ? 'Quitter le Plein Écran' : 'Activer le Plein Écran'}
             >
@@ -809,17 +804,23 @@ function LiveContent() {
 
             {/* Toggle Audio Sound Button */}
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
+                autoplayBlockedRef.current = false;
                 const next = !soundEnabled;
                 setSoundEnabled(next);
-                if (next) playLiveChime();
+                if (videoRef.current) {
+                  videoRef.current.muted = !next;
+                  if (next) {
+                    videoRef.current.play().catch(() => {});
+                  }
+                }
               }}
-              className={`p-2 rounded-full border transition ${
-                isLightTheme
+              className={`p-2 rounded-full border transition ${isLightTheme
                   ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10'
                   : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08]'
-              }`}
-              title={soundEnabled ? 'Son activé (Gong à 0)' : 'Son coupé'}
+                }`}
+              title={soundEnabled ? 'Son activé' : 'Son coupé'}
               aria-label={soundEnabled ? 'Couper le son' : 'Activer le son'}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4 text-[#E8265F]" /> : <VolumeX className="w-4 h-4" />}
@@ -897,11 +898,10 @@ function LiveContent() {
                   min={minDateTime}
                   onChange={(e) => setEditTime(e.target.value)}
                   required
-                  className={`w-full px-4 py-3 rounded-xl bg-white/[0.05] border text-white text-sm focus:outline-none transition scheme-dark ${
-                    isTimeInPast
+                  className={`w-full px-4 py-3 rounded-xl bg-white/[0.05] border text-white text-sm focus:outline-none transition scheme-dark ${isTimeInPast
                       ? 'border-red-500/80 focus:border-red-500'
                       : 'border-white/[0.15] focus:border-[#E8265F]'
-                  }`}
+                    }`}
                 />
 
                 {/* 1-Click Quick Launch Presets */}
@@ -958,11 +958,10 @@ function LiveContent() {
                   <button
                     type="button"
                     onClick={() => setEditTheme('dark')}
-                    className={`flex items-center justify-center gap-2.5 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition ${
-                      editTheme === 'dark'
+                    className={`flex items-center justify-center gap-2.5 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition ${editTheme === 'dark'
                         ? 'bg-[#E8265F]/20 border-[#E8265F] text-white shadow-lg shadow-[#E8265F]/20'
                         : 'bg-white/[0.04] border-white/10 text-white/60 hover:text-white'
-                    }`}
+                      }`}
                   >
                     <Moon className="w-4 h-4 text-[#D4AF37]" />
                     Obsidian Sombre
@@ -971,11 +970,10 @@ function LiveContent() {
                   <button
                     type="button"
                     onClick={() => setEditTheme('light')}
-                    className={`flex items-center justify-center gap-2.5 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition ${
-                      editTheme === 'light'
+                    className={`flex items-center justify-center gap-2.5 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition ${editTheme === 'light'
                         ? 'bg-[#E8265F]/20 border-[#E8265F] text-white shadow-lg shadow-[#E8265F]/20'
                         : 'bg-white/[0.04] border-white/10 text-white/60 hover:text-white'
-                    }`}
+                      }`}
                   >
                     <Sun className="w-4 h-4 text-[#D4AF37]" />
                     Boutique Lin
